@@ -9,5 +9,5 @@ extern "C" {
 
 #[wasm_bindgen]
 pub fn greet() {
-    alert("Hello, wasm-typst!");
+    alert("Hello, wasm-typstttt!");
 }
