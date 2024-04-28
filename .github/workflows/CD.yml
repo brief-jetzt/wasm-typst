@@ -27,7 +27,7 @@ jobs:
       - run: npm pack && npm publish
         working-directory: ./pkg
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 #      - run: npm login --scope=@brief-jetzt --registry=https://npm.pkg.github.com --always-auth
 #      - run: wasm-pack publish
 #        env:
