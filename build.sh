@@ -21,4 +21,4 @@ PACKAGE_JSON=$(echo "$PACKAGE_JSON" | jq '.["repository"] = "https://github.com/
 
 
 echo "$PACKAGE_JSON" | jq
-#echo $PACKAGE_JSON > pkg/package.json
+echo $PACKAGE_JSON > pkg/package.json
