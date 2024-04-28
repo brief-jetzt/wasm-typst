@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Build the project
-wasm-pack build
+wasm-pack build "$@"
 
 # Modify package.json to fit our needs
 # https://github.com/rustwasm/wasm-pack/issues/427#issuecomment-458180179
