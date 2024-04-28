@@ -20,7 +20,7 @@ jobs:
       - run: ./build.sh
       - name: Test
         run: wasm-pack test --chrome --firefox --headless
-      - run: npm login --scope=@brief-jetzt --registry=https://npm.pkg.github.com --always-auth
+#      - run: npm login --scope=@brief-jetzt --registry=https://npm.pkg.github.com --always-auth
+      - run: wasm-pack publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: wasm-pack publish
