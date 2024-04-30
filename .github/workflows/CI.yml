@@ -20,6 +20,6 @@ jobs:
     - uses: actions/checkout@v2
     - uses: actions-rust-lang/setup-rust-toolchain@v1
     - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-    - run: ./build.sh
+#    - run: ./build.sh
     - run: cargo test
     - run: wasm-pack test --chrome --firefox --headless
