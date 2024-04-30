@@ -1,13 +1,15 @@
 mod utils;
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use comemo::Prehashed;
-use typst::{Library, World};
-use typst::diag::FileResult;
+use typst::{Library, LibraryBuilder, World};
+use typst::diag::{FileError, FileResult};
 use typst::eval::Tracer;
-use typst::foundations::{Bytes, Datetime, Smart};
+use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
+use typst::model::Document;
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
 use wasm_bindgen::prelude::*;
@@ -19,10 +21,19 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = World)]
 pub struct WasmWorld {
-    /// Typst's standard library.
     library: Prehashed<Library>,
     book: Prehashed<FontBook>,
     fonts: Vec<FontSlot>,
+    slots: Mutex<HashMap<FileId, FileSlot>>,
+    // used to store the compiled document, so that we are able to
+    // return compiler warnings in the .compile() method
+    document: Option<Document>,
+}
+
+struct FileSlot {
+    id: FileId,
+    source: Source,
+    file: Bytes,
 }
 
 struct FontSlot {
@@ -49,7 +60,19 @@ impl WasmWorld {
             library: Prehashed::new(Library::builder().build()),
             book: Prehashed::new(FontBook::new()),
             fonts: Vec::new(),
+            slots: Mutex::new(HashMap::new()),
+            document: None,
         }
+    }
+
+    pub fn set_inputs(&mut self, inputs: JsValue) {
+        // TODO: proper typing for JsValue
+        let inputs: HashMap<String, String> = serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
+        let mut dict = Dict::new();
+        for (key, value) in inputs {
+            dict.insert(Str::from(key), Value::Str(Str::from(value)));
+        }
+        self.library = Prehashed::new(LibraryBuilder::default().with_inputs(dict).build());
     }
 
     pub fn add_font(&mut self, path: String, data: Vec<u8>) {
@@ -66,27 +89,62 @@ impl WasmWorld {
         self.book = Prehashed::new(book);
     }
 
-    pub fn render_pdf(&self) -> Vec<u8> {
+    fn add_file_slot(&self, path: String, source: String, data: Vec<u8>) {
+        let file_id = FileId::new(None, VirtualPath::new(path));
+        let slot = FileSlot {
+            id: file_id,
+            source: Source::new(file_id, source),
+            file: Bytes::from(data),
+        };
+        let mut slots = self.slots.lock().unwrap();
+        slots.insert(file_id, slot);
+    }
+
+    pub fn add_source(&self, path: String, source: String) {
+        self.add_file_slot(path, source, Vec::new());
+    }
+
+    pub fn add_file(&self, path: String, data: Vec<u8>) {
+        self.add_file_slot(path, String::new(), data);
+    }
+
+    pub fn compile(&mut self) -> String {
         let mut tracer = Tracer::new();
-        let document = typst::compile(self, &mut tracer).unwrap();
-        // let warnings = tracer.warnings();
-        typst_pdf::pdf(&document, Smart::Auto, now())
-        // let document = compile();
-        //
-        // typst::compile(world, &mut tracer).unwrap();
-        // typst_pdf::pdf(&document, Smart::Auto, world.today(Some(0)))
+        match typst::compile(self, &mut tracer) {
+            Ok(document) => {
+                self.document = Some(document);
+                let warnings = tracer.warnings();
+                let mut res = String::new();
+                for warning in warnings {
+                    res.push_str(&format!("{:?}\n", warning));
+                }
+                res
+            },
+            Err(e) => {
+                let mut res = String::new();
+                res.push_str(&format!("{:?}\n", e));
+                res
+            }
+        }
+    }
+
+    pub fn render_pdf(&self) -> Vec<u8> {
+        match self.document {
+            Some(ref document) => typst_pdf::pdf(document, Smart::Auto, now()),
+            None => Vec::new()
+        }
     }
 
     pub fn render_svg(&self) -> String {
-        let mut tracer = Tracer::new();
-        let document = typst::compile(self, &mut tracer).unwrap();
-        // let warnings = tracer.warnings();
-        // TODO: Replace svg_merged by something where we can tell the pages apart
-        typst_svg::svg_merged(&document, typst::layout::Abs::pt(5.0))
-        // let document = compile();
-        //
-        // typst::compile(world, &mut tracer).unwrap();
-        // typst_pdf::pdf(&document, Smart::Auto, world.today(Some(0)))
+        match self.document {
+            Some(ref document) => {
+                // TODO: Replace svg_merged by something where we can tell the pages apart
+                typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
+            },
+            None => {
+                String::from("<pre class=\"typst-render-error\">No document</pre>".to_string())
+            }
+        }
     }
 }
 
@@ -101,15 +159,28 @@ impl World for WasmWorld {
 
     fn main(&self) -> Source {
         let file_id = FileId::new(None, VirtualPath::new("main.typ"));
-        self.source(file_id).unwrap()
+        match self.source(file_id) {
+            Ok(source) => source,
+            Err(_) => Source::new(file_id, String::from("= Error!\nCould not find main.typ file."))
+        }
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
-        let text = String::from("= Hello world
-This is an *awesome* example _document_.
-        ");
-        let source = Source::new(id, String::from(text));
-        Ok(source)
+        let slot = self.slots.lock().unwrap();
+        // let file_slot = slot.get(&id).unwrap();
+        match slot.get(&id) {
+            Some(file_slot) => Ok(file_slot.source.clone()),
+            None => {
+                let file_path = id.vpath().as_rooted_path();
+                Err(FileError::NotFound(PathBuf::from(file_path)))
+            }
+        }
+        // Ok(file_slot.source.clone())
+//         let text = String::from("= Hello world
+// This is an *awesome* example _document_.
+//         ");
+//         let source = Source::new(id, String::from(text));
+//         Ok(source)
     }
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
