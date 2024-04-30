@@ -31,9 +31,9 @@ pub struct WasmWorld {
 }
 
 struct FileSlot {
-    id: FileId,
+    _id: FileId,
     source: Source,
-    file: Bytes,
+    _file: Bytes,
 }
 
 struct FontSlot {
@@ -92,9 +92,9 @@ impl WasmWorld {
     fn add_file_slot(&self, path: String, source: String, data: Vec<u8>) {
         let file_id = FileId::new(None, VirtualPath::new(path));
         let slot = FileSlot {
-            id: file_id,
+            _id: file_id,
             source: Source::new(file_id, source),
-            file: Bytes::from(data),
+            _file: Bytes::from(data),
         };
         let mut slots = self.slots.lock().unwrap();
         slots.insert(file_id, slot);
@@ -183,7 +183,7 @@ impl World for WasmWorld {
 //         Ok(source)
     }
 
-    fn file(&self, id: FileId) -> FileResult<Bytes> {
+    fn file(&self, _id: FileId) -> FileResult<Bytes> {
         todo!()
     }
 
