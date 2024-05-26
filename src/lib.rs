@@ -30,6 +30,13 @@ pub struct WasmWorld {
     document: Option<Document>,
 }
 
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct FontInput {
+    path: String,
+    data: Vec<u8>,
+}
+
 struct FileSlot {
     _id: FileId,
     source: Source,
@@ -50,6 +57,13 @@ impl FontSlot {
                 Font::new(data, self.index)
             })
             .clone()
+    }
+}
+
+#[wasm_bindgen(js_class = FontInput)]
+impl FontInput {
+    pub fn new(path: String, data: Vec<u8>) -> Self {
+        Self { path, data }
     }
 }
 
@@ -75,16 +89,20 @@ impl WasmWorld {
         self.library = Prehashed::new(LibraryBuilder::default().with_inputs(dict).build());
     }
 
-    pub fn add_font(&mut self, path: String, data: Vec<u8>) {
-        let buffer = typst::foundations::Bytes::from(data);
-        let mut book = self.book.clone().into_inner();
-        for (i, font) in Font::iter(buffer).enumerate() {
-            book.push(font.info().clone());
-            self.fonts.push(FontSlot {
-                path: PathBuf::from(&path),
-                index: i as u32,
-                font: OnceLock::from(Some(font)),
-            });
+    #[wasm_bindgen(js_name = setFonts)]
+    pub fn set_fonts(&mut self, fonts: Vec<FontInput>) {
+        let mut book = FontBook::new();
+        self.fonts = Vec::new();
+        for font_input in fonts {
+            let buffer = typst::foundations::Bytes::from(font_input.data);
+            for (i, font) in Font::iter(buffer).enumerate() {
+                book.push(font.info().clone());
+                self.fonts.push(FontSlot {
+                    path: PathBuf::from(&font_input.path),
+                    index: i as u32,
+                    font: OnceLock::from(Some(font)),
+                });
+            }
         }
         self.book = Prehashed::new(book);
     }
