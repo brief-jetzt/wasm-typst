@@ -37,6 +37,20 @@ pub struct FontInput {
     data: Vec<u8>,
 }
 
+#[wasm_bindgen]
+#[derive(Debug)]
+struct FileInput {
+    path: String,
+    data: Vec<u8>,
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct SourceInput {
+    path: String,
+    source: String,
+}
+
 struct FileSlot {
     _id: FileId,
     source: Source,
@@ -64,6 +78,20 @@ impl FontSlot {
 impl FontInput {
     pub fn new(path: String, data: Vec<u8>) -> Self {
         Self { path, data }
+    }
+}
+
+#[wasm_bindgen(js_class = FileInput)]
+impl FileInput {
+    pub fn new(path: String, data: Vec<u8>) -> Self {
+        Self { path, data }
+    }
+}
+
+#[wasm_bindgen(js_class = SourceInput)]
+impl SourceInput {
+    pub fn new(path: String, source: String) -> Self {
+        Self { path, source }
     }
 }
 
@@ -107,23 +135,32 @@ impl WasmWorld {
         self.book = Prehashed::new(book);
     }
 
-    fn add_file_slot(&self, path: String, source: String, data: Vec<u8>) {
-        let file_id = FileId::new(None, VirtualPath::new(path));
-        let slot = FileSlot {
-            _id: file_id,
-            source: Source::new(file_id, source),
-            _file: Bytes::from(data),
-        };
+    #[wasm_bindgen(js_name = setSourcesAndFiles)]
+    pub fn set_sources_and_files(&self, sources: Vec<SourceInput>, files: Vec<FileInput>) {
         let mut slots = self.slots.lock().unwrap();
-        slots.insert(file_id, slot);
-    }
-
-    pub fn add_source(&self, path: String, source: String) {
-        self.add_file_slot(path, source, Vec::new());
-    }
-
-    pub fn add_file(&self, path: String, data: Vec<u8>) {
-        self.add_file_slot(path, String::new(), data);
+        slots.clear();
+        for file in files {
+            let file_id = FileId::new(None, VirtualPath::new(file.path));
+            slots.insert(
+                file_id,
+                FileSlot {
+                    _id: file_id,
+                    source: Source::new(file_id, String::new()),
+                    _file: Bytes::from(file.data),
+                },
+            );
+        }
+        for source in sources {
+            let file_id = FileId::new(None, VirtualPath::new(source.path));
+            slots.insert(
+                file_id,
+                FileSlot {
+                    _id: file_id,
+                    source: Source::new(file_id, source.source),
+                    _file: Bytes::from(Vec::new()),
+                },
+            );
+        }
     }
 
     pub fn compile(&mut self) -> String {
@@ -137,7 +174,7 @@ impl WasmWorld {
                     res.push_str(&format!("{:?}\n", warning));
                 }
                 res
-            },
+            }
             Err(e) => {
                 let mut res = String::new();
                 res.push_str(&format!("{:?}\n", e));
@@ -158,7 +195,7 @@ impl WasmWorld {
             Some(ref document) => {
                 // TODO: Replace svg_merged by something where we can tell the pages apart
                 typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
-            },
+            }
             None => {
                 String::from("<pre class=\"typst-render-error\">No document</pre>".to_string())
             }
