@@ -39,7 +39,7 @@ pub struct FontInput {
 
 #[wasm_bindgen]
 #[derive(Debug)]
-struct FileInput {
+pub struct FileInput {
     path: String,
     data: Vec<u8>,
 }
