@@ -107,16 +107,6 @@ impl WasmWorld {
         }
     }
 
-    pub fn set_inputs(&mut self, inputs: JsValue) {
-        // TODO: proper typing for JsValue
-        let inputs: HashMap<String, String> = serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
-        let mut dict = Dict::new();
-        for (key, value) in inputs {
-            dict.insert(Str::from(key), Value::Str(Str::from(value)));
-        }
-        self.library = Prehashed::new(LibraryBuilder::default().with_inputs(dict).build());
-    }
-
     #[wasm_bindgen(js_name = setFonts)]
     pub fn set_fonts(&mut self, fonts: Vec<FontInput>) {
         let mut book = FontBook::new();
@@ -163,7 +153,8 @@ impl WasmWorld {
         }
     }
 
-    pub fn compile(&mut self) -> String {
+    pub fn compile(&mut self, inputs: JsValue) -> String {
+        self.set_inputs(inputs);
         let mut tracer = Tracer::new();
         match typst::compile(self, &mut tracer) {
             Ok(document) => {
@@ -200,6 +191,16 @@ impl WasmWorld {
                 String::from("<pre class=\"typst-render-error\">No document</pre>".to_string())
             }
         }
+    }
+
+    fn set_inputs(&mut self, inputs: JsValue) {
+        // TODO: proper typing for JsValue
+        let inputs: HashMap<String, String> = serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
+        let mut dict = Dict::new();
+        for (key, value) in inputs {
+            dict.insert(Str::from(key), Value::Str(Str::from(value)));
+        }
+        self.library = Prehashed::new(LibraryBuilder::default().with_inputs(dict).build());
     }
 }
 
