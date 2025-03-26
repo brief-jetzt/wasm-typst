@@ -7,11 +7,14 @@ use std::sync::{Mutex, OnceLock};
 use comemo::Prehashed;
 use typst::{Library, LibraryBuilder, World};
 use typst::diag::{FileError, FileResult};
-use typst::eval::Tracer;
+use typst::trace;
 use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
+use typst::foundations::Smart::Auto;
 use typst::model::Document;
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
+use typst::utils::LazyHash;
+use typst_pdf::PdfOptions;
 use wasm_bindgen::prelude::*;
 
 // #[wasm_bindgen]
@@ -21,8 +24,8 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = World)]
 pub struct WasmWorld {
-    library: Prehashed<Library>,
-    book: Prehashed<FontBook>,
+    library: LazyHash<Library>,
+    book: LazyHash<FontBook>,
     fonts: Vec<FontSlot>,
     slots: Mutex<HashMap<FileId, FileSlot>>,
     // used to store the compiled document, so that we are able to
@@ -99,8 +102,8 @@ impl SourceInput {
 impl WasmWorld {
     pub fn new() -> Self {
         Self {
-            library: Prehashed::new(Library::builder().build()),
-            book: Prehashed::new(FontBook::new()),
+            library: LazyHash::new(Library::builder().build()),
+            book: LazyHash::new(FontBook::new()),
             fonts: Vec::new(),
             slots: Mutex::new(HashMap::new()),
             document: None,
@@ -122,7 +125,7 @@ impl WasmWorld {
                 });
             }
         }
-        self.book = Prehashed::new(book);
+        self.book = LazyHash::new(book);
     }
 
     #[wasm_bindgen(js_name = setSourcesAndFiles)]
@@ -155,13 +158,12 @@ impl WasmWorld {
 
     pub fn compile(&mut self, inputs: JsValue) -> String {
         self.set_inputs(inputs);
-        let mut tracer = Tracer::new();
-        match typst::compile(self, &mut tracer) {
+        let warned = typst::compile(self);
+        match warned.output {
             Ok(document) => {
                 self.document = Some(document);
-                let warnings = tracer.warnings();
                 let mut res = String::new();
-                for warning in warnings {
+                for warning in warned.warnings {
                     res.push_str(&format!("{:?}\n", warning));
                 }
                 res
@@ -176,7 +178,15 @@ impl WasmWorld {
 
     pub fn render_pdf(&self) -> Vec<u8> {
         match self.document {
-            Some(ref document) => typst_pdf::pdf(document, Smart::Auto, now()),
+            Some(ref document) => {
+                let options = PdfOptions {
+                    ident: Smart::Auto,
+                    timestamp: now(),
+                    page_ranges: None,
+                    standards: Default::default(),
+                };
+                typst_pdf::pdf(document, &options).unwrap()
+            },
             None => Vec::new()
         }
     }
@@ -200,25 +210,21 @@ impl WasmWorld {
         for (key, value) in inputs {
             dict.insert(Str::from(key), Value::Str(Str::from(value)));
         }
-        self.library = Prehashed::new(LibraryBuilder::default().with_inputs(dict).build());
+        self.library = LazyHash::new(LibraryBuilder::default().with_inputs(dict).build());
     }
 }
 
 impl World for WasmWorld {
-    fn library(&self) -> &Prehashed<Library> {
+    fn library(&self) -> &LazyHash<Library> {
         &self.library
     }
 
-    fn book(&self) -> &Prehashed<FontBook> {
+    fn book(&self) -> &LazyHash<FontBook> {
         &self.book
     }
 
-    fn main(&self) -> Source {
-        let file_id = FileId::new(None, VirtualPath::new("main.typ"));
-        match self.source(file_id) {
-            Ok(source) => source,
-            Err(_) => Source::new(file_id, String::from("= Error!\nCould not find main.typ file."))
-        }
+    fn main(&self) -> FileId {
+        FileId::new(None, VirtualPath::new("main.typ"))
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
@@ -258,10 +264,14 @@ fn now() -> Option<Datetime> {
 
 pub fn render_pdf() -> Vec<u8> {
     let world = &WasmWorld::new();
-    let mut tracer = Tracer::new();
-    let document = typst::compile(world, &mut tracer).unwrap();
-    // let warnings = tracer.warnings();
-    typst_pdf::pdf(&document, Smart::Auto, now())
+    let document = typst::compile(world).output.unwrap();
+    let options = PdfOptions {
+        ident: Smart::Auto,
+        timestamp: now(),
+        page_ranges: None,
+        standards: Default::default(),
+    };
+    typst_pdf::pdf(&document, &options).unwrap()
     // let document = compile();
     //
     // typst::compile(world, &mut tracer).unwrap();
