@@ -258,19 +258,3 @@ impl World for WasmWorld {
 fn now() -> Option<Datetime> {
     Datetime::from_ymd_hms(2000, 1, 1, 0, 0, 0)
 }
-
-pub fn render_pdf() -> Vec<u8> {
-    let world = &WasmWorld::new();
-    let document = typst::compile(world).output.unwrap();
-    let options = PdfOptions {
-        ident: Smart::Auto,
-        timestamp: now(),
-        page_ranges: None,
-        standards: Default::default(),
-    };
-    typst_pdf::pdf(&document, &options).unwrap()
-    // let document = compile();
-    //
-    // typst::compile(world, &mut tracer).unwrap();
-    // typst_pdf::pdf(&document, Smart::Auto, world.today(Some(0)))
-}
