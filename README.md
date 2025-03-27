@@ -1,87 +1,54 @@
 [![CI](https://github.com/brief-jetzt/wasm-typst/actions/workflows/CI.yml/badge.svg)](https://github.com/brief-jetzt/wasm-typst/actions/workflows/CI.yml) [![CD](https://github.com/brief-jetzt/wasm-typst/actions/workflows/CD.yml/badge.svg)](https://github.com/brief-jetzt/wasm-typst/actions/workflows/CD.yml) ![version](https://img.shields.io/npm/v/%40brief-jetzt/wasm-typst) ![downloads](https://img.shields.io/npm/dm/%40brief-jetzt/wasm-typst) ![License](https://img.shields.io/npm/l/%40brief-jetzt%2Fwasm-typst)
 
 
-<div align="center">
+# wasm bindings for typst
 
-  <h1><code>wasm-pack-template</code></h1>
+This package allows you to use the [typst][typst] library in the browser.
 
-  <strong>A template for kick starting a Rust and WebAssembly project using <a href="https://github.com/rustwasm/wasm-pack">wasm-pack</a>.</strong>
+- [npm package][npm-package]
 
-  <p>
-    <a href="https://travis-ci.org/rustwasm/wasm-pack-template"><img src="https://img.shields.io/travis/rustwasm/wasm-pack-template.svg?style=flat-square" alt="Build Status" /></a>
-  </p>
+## Usage
 
-  <h3>
-    <a href="https://rustwasm.github.io/docs/wasm-pack/tutorials/npm-browser-packages/index.html">Tutorial</a>
-    <span> | </span>
-    <a href="https://discordapp.com/channels/442252698964721669/443151097398296587">Chat</a>
-  </h3>
+TODO
 
-  <sub>Built with 🦀🕸 by <a href="https://rustwasm.github.io/">The Rust and WebAssembly Working Group</a></sub>
-</div>
+## Developing
 
-## About
+Running tests:
 
-[**📚 Read this template tutorial! 📚**][template-docs]
-
-This template is designed for compiling Rust libraries into WebAssembly and
-publishing the resulting package to NPM.
-
-Be sure to check out [other `wasm-pack` tutorials online][tutorials] for other
-templates and usages of `wasm-pack`.
-
-[tutorials]: https://rustwasm.github.io/docs/wasm-pack/tutorials/index.html
-[template-docs]: https://rustwasm.github.io/docs/wasm-pack/tutorials/npm-browser-packages/index.html
-
-## 🚴 Usage
-
-### 🐑 Use `cargo generate` to Clone this Template
-
-[Learn more about `cargo generate` here.](https://github.com/ashleygwilliams/cargo-generate)
-
-```
-cargo generate --git https://github.com/rustwasm/wasm-pack-template.git --name my-project
-cd my-project
+```sh
+wasm-pack test --chrome --firefox --headless
 ```
 
-### 🛠️ Build with `wasm-pack build`
+Building the package:
 
 ```
 wasm-pack build
 ```
 
-### 🔬 Test in Headless Browsers with `wasm-pack test`
+You can then install the package in another npm project:
 
-```
-wasm-pack test --headless --firefox
-```
-
-### 🎁 Publish to NPM with `wasm-pack publish`
-
-```
-wasm-pack publish
+```sh
+cd <your-npm-project>
+npm install <path-to-this-repo>/pkg
 ```
 
-## 🔋 Batteries Included
+If you are installing it in a project that already has `@brief-jetzt/wasm-typst` installed, you may want to
+modify it's `package.json`: Make sure that the local dependency has the prefix `@brief-jetzt` set, so that
+your import statements keep working:
 
-* [`wasm-bindgen`](https://github.com/rustwasm/wasm-bindgen) for communicating
-  between WebAssembly and JavaScript.
-* [`console_error_panic_hook`](https://github.com/rustwasm/console_error_panic_hook)
-  for logging panic messages to the developer console.
-* `LICENSE-APACHE` and `LICENSE-MIT`: most Rust projects are licensed this way, so these are included for you
+```
+[…]
+  "dependencies": {
+    "@brief-jetzt/wasm-typst": "file:../../wasm-typst/pkg",
+    […]
+```
 
-## License
+Run `npm i`.
 
-Licensed under either of
+---
 
-* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-* MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+Note: The wasm bindings are based on this [tutorial][wasm-tutorial]
 
-at your option.
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in the work by you, as defined in the Apache-2.0
-license, shall be dual licensed as above, without any additional terms or
-conditions.
+[wasm-tutorial]: https://rustwasm.github.io/docs/wasm-pack/tutorials/index.html
+[typst]: https://github.com/typst/typst
+[npm-package]: https://www.npmjs.com/package/@brief-jetzt/wasm-typst
