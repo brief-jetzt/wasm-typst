@@ -7,11 +7,11 @@ use std::sync::{Mutex, OnceLock};
 use typst::{Library, LibraryBuilder, World};
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
-use typst::model::Document;
+use typst::layout::PagedDocument;
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
-use typst_pdf::PdfOptions;
+use typst_pdf::{PdfOptions, Timestamp};
 use wasm_bindgen::prelude::*;
 
 // #[wasm_bindgen]
@@ -27,7 +27,7 @@ pub struct WasmWorld {
     slots: Mutex<HashMap<FileId, FileSlot>>,
     // used to store the compiled document, so that we are able to
     // return compiler warnings in the .compile() method
-    document: Option<Document>,
+    document: Option<PagedDocument>,
 }
 
 #[wasm_bindgen]
@@ -67,8 +67,8 @@ impl FontSlot {
     fn get(&self) -> Option<Font> {
         self.font
             .get_or_init(|| {
-                let data = fs::read(&self.path).ok()?.into();
-                Font::new(data, self.index)
+                let data = fs::read(&self.path).ok()?;
+                Font::new(Bytes::new(data), self.index)
             })
             .clone()
     }
@@ -112,7 +112,7 @@ impl WasmWorld {
         let mut book = FontBook::new();
         self.fonts = Vec::new();
         for font_input in fonts {
-            let buffer = typst::foundations::Bytes::from(font_input.data);
+            let buffer = Bytes::new(font_input.data);
             for (i, font) in Font::iter(buffer).enumerate() {
                 book.push(font.info().clone());
                 self.fonts.push(FontSlot {
@@ -136,7 +136,7 @@ impl WasmWorld {
                 FileSlot {
                     _id: file_id,
                     source: Source::new(file_id, String::new()),
-                    _file: Bytes::from(file.data),
+                    _file: Bytes::new(file.data),
                 },
             );
         }
@@ -147,7 +147,7 @@ impl WasmWorld {
                 FileSlot {
                     _id: file_id,
                     source: Source::new(file_id, source.source),
-                    _file: Bytes::from(Vec::new()),
+                    _file: Bytes::new(Vec::new()),
                 },
             );
         }
@@ -155,7 +155,7 @@ impl WasmWorld {
 
     pub fn compile(&mut self, inputs: JsValue) -> String {
         self.set_inputs(inputs);
-        let warned = typst::compile(self);
+        let warned = typst::compile::<PagedDocument>(self);
         match warned.output {
             Ok(document) => {
                 self.document = Some(document);
@@ -195,7 +195,7 @@ impl WasmWorld {
                 typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
             }
             None => {
-                String::from("<pre class=\"typst-render-error\">No document</pre>".to_string())
+                "<pre class=\"typst-render-error\">No document</pre>".to_string()
             }
         }
     }
@@ -255,6 +255,7 @@ impl World for WasmWorld {
     }
 }
 
-fn now() -> Option<Datetime> {
-    Datetime::from_ymd_hms(2000, 1, 1, 0, 0, 0)
+fn now() -> Option<Timestamp> {
+    let datetime = Datetime::from_ymd_hms(2000, 1, 1, 0, 0, 0).unwrap();
+    Some(Timestamp::new_utc(datetime))
 }

@@ -12,19 +12,26 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 wasm-bindgen = "0.2.84"
+#
+#[dependencies.web-sys]
+#version = "0.3"
+#features = [
+#    # https://rustwasm.github.io/wasm-bindgen/web-sys/using-web-sys.html
+#]
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.7", optional = true }
-typst = "0.12.0"
-typst-pdf = "0.12.0"
-typst-svg = "0.12.0"
-typst-render = "0.12.0"
+typst = "0.13.1"
+typst-pdf = "0.13.1"
+typst-svg = "0.13.1"
+typst-render = "0.13.1"
+typst-ide = "0.13.1"
+#typst-timing = { version = "0.13.1", features = ["wasm"]}
 comemo = "0.4.0"
 serde-wasm-bindgen = "0.6.5"
-typst-ide = "0.12.0"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.34"

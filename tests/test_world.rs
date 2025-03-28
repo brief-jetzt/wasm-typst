@@ -1,7 +1,10 @@
 use wasm_bindgen::JsValue;
 use wasm_typst::{SourceInput, WasmWorld};
+use wasm_bindgen_test::*;
 
-#[test]
+wasm_bindgen_test_configure!(run_in_browser);
+
+#[wasm_bindgen_test]
 fn render_svg_without_main_source() {
     let mut world = WasmWorld::new();
     world.compile(JsValue::NULL);
@@ -9,7 +12,7 @@ fn render_svg_without_main_source() {
     assert!(svg.starts_with("<svg"));
 }
 
-#[test]
+#[wasm_bindgen_test]
 fn render_pdf_without_main_source() {
     let mut world = WasmWorld::new();
     world.compile(JsValue::NULL);
@@ -17,7 +20,7 @@ fn render_pdf_without_main_source() {
     assert!(pdf.len() > 0);
 }
 
-#[test]
+#[wasm_bindgen_test]
 fn render_svg_with_main_source() {
     let mut world = WasmWorld::new();
     world.compile(JsValue::NULL);
