@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use comemo::Prehashed;
 use typst::{Library, LibraryBuilder, World};
 use typst::diag::{FileError, FileResult};
-use typst::eval::Tracer;
 use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
-use typst::model::Document;
+use typst::layout::PagedDocument;
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
+use typst::utils::LazyHash;
+use typst_pdf::{PdfOptions, Timestamp};
 use wasm_bindgen::prelude::*;
 
 // #[wasm_bindgen]
@@ -21,13 +21,13 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(js_name = World)]
 pub struct WasmWorld {
-    library: Prehashed<Library>,
-    book: Prehashed<FontBook>,
+    library: LazyHash<Library>,
+    book: LazyHash<FontBook>,
     fonts: Vec<FontSlot>,
     slots: Mutex<HashMap<FileId, FileSlot>>,
     // used to store the compiled document, so that we are able to
     // return compiler warnings in the .compile() method
-    document: Option<Document>,
+    document: Option<PagedDocument>,
 }
 
 #[wasm_bindgen]
@@ -67,8 +67,8 @@ impl FontSlot {
     fn get(&self) -> Option<Font> {
         self.font
             .get_or_init(|| {
-                let data = fs::read(&self.path).ok()?.into();
-                Font::new(data, self.index)
+                let data = fs::read(&self.path).ok()?;
+                Font::new(Bytes::new(data), self.index)
             })
             .clone()
     }
@@ -99,8 +99,8 @@ impl SourceInput {
 impl WasmWorld {
     pub fn new() -> Self {
         Self {
-            library: Prehashed::new(Library::builder().build()),
-            book: Prehashed::new(FontBook::new()),
+            library: LazyHash::new(Library::builder().build()),
+            book: LazyHash::new(FontBook::new()),
             fonts: Vec::new(),
             slots: Mutex::new(HashMap::new()),
             document: None,
@@ -112,7 +112,7 @@ impl WasmWorld {
         let mut book = FontBook::new();
         self.fonts = Vec::new();
         for font_input in fonts {
-            let buffer = typst::foundations::Bytes::from(font_input.data);
+            let buffer = Bytes::new(font_input.data);
             for (i, font) in Font::iter(buffer).enumerate() {
                 book.push(font.info().clone());
                 self.fonts.push(FontSlot {
@@ -122,7 +122,7 @@ impl WasmWorld {
                 });
             }
         }
-        self.book = Prehashed::new(book);
+        self.book = LazyHash::new(book);
     }
 
     #[wasm_bindgen(js_name = setSourcesAndFiles)]
@@ -136,7 +136,7 @@ impl WasmWorld {
                 FileSlot {
                     _id: file_id,
                     source: Source::new(file_id, String::new()),
-                    _file: Bytes::from(file.data),
+                    _file: Bytes::new(file.data),
                 },
             );
         }
@@ -147,7 +147,7 @@ impl WasmWorld {
                 FileSlot {
                     _id: file_id,
                     source: Source::new(file_id, source.source),
-                    _file: Bytes::from(Vec::new()),
+                    _file: Bytes::new(Vec::new()),
                 },
             );
         }
@@ -155,13 +155,12 @@ impl WasmWorld {
 
     pub fn compile(&mut self, inputs: JsValue) -> String {
         self.set_inputs(inputs);
-        let mut tracer = Tracer::new();
-        match typst::compile(self, &mut tracer) {
+        let warned = typst::compile::<PagedDocument>(self);
+        match warned.output {
             Ok(document) => {
                 self.document = Some(document);
-                let warnings = tracer.warnings();
                 let mut res = String::new();
-                for warning in warnings {
+                for warning in warned.warnings {
                     res.push_str(&format!("{:?}\n", warning));
                 }
                 res
@@ -176,7 +175,15 @@ impl WasmWorld {
 
     pub fn render_pdf(&self) -> Vec<u8> {
         match self.document {
-            Some(ref document) => typst_pdf::pdf(document, Smart::Auto, now()),
+            Some(ref document) => {
+                let options = PdfOptions {
+                    ident: Smart::Auto,
+                    timestamp: now(),
+                    page_ranges: None,
+                    standards: Default::default(),
+                };
+                typst_pdf::pdf(document, &options).unwrap()
+            },
             None => Vec::new()
         }
     }
@@ -188,7 +195,7 @@ impl WasmWorld {
                 typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
             }
             None => {
-                String::from("<pre class=\"typst-render-error\">No document</pre>".to_string())
+                "<pre class=\"typst-render-error\">No document</pre>".to_string()
             }
         }
     }
@@ -200,25 +207,21 @@ impl WasmWorld {
         for (key, value) in inputs {
             dict.insert(Str::from(key), Value::Str(Str::from(value)));
         }
-        self.library = Prehashed::new(LibraryBuilder::default().with_inputs(dict).build());
+        self.library = LazyHash::new(LibraryBuilder::default().with_inputs(dict).build());
     }
 }
 
 impl World for WasmWorld {
-    fn library(&self) -> &Prehashed<Library> {
+    fn library(&self) -> &LazyHash<Library> {
         &self.library
     }
 
-    fn book(&self) -> &Prehashed<FontBook> {
+    fn book(&self) -> &LazyHash<FontBook> {
         &self.book
     }
 
-    fn main(&self) -> Source {
-        let file_id = FileId::new(None, VirtualPath::new("main.typ"));
-        match self.source(file_id) {
-            Ok(source) => source,
-            Err(_) => Source::new(file_id, String::from("= Error!\nCould not find main.typ file."))
-        }
+    fn main(&self) -> FileId {
+        FileId::new(None, VirtualPath::new("main.typ"))
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
@@ -252,18 +255,7 @@ impl World for WasmWorld {
     }
 }
 
-fn now() -> Option<Datetime> {
-    Datetime::from_ymd_hms(2000, 1, 1, 0, 0, 0)
-}
-
-pub fn render_pdf() -> Vec<u8> {
-    let world = &WasmWorld::new();
-    let mut tracer = Tracer::new();
-    let document = typst::compile(world, &mut tracer).unwrap();
-    // let warnings = tracer.warnings();
-    typst_pdf::pdf(&document, Smart::Auto, now())
-    // let document = compile();
-    //
-    // typst::compile(world, &mut tracer).unwrap();
-    // typst_pdf::pdf(&document, Smart::Auto, world.today(Some(0)))
+fn now() -> Option<Timestamp> {
+    let datetime = Datetime::from_ymd_hms(2000, 1, 1, 0, 0, 0).unwrap();
+    Some(Timestamp::new_utc(datetime))
 }
