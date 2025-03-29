@@ -192,11 +192,14 @@ impl WasmWorld {
     }
 
     #[wasm_bindgen(js_name = renderSvg)]
-    pub fn render_svg(&self) -> String {
+    pub fn render_svg(&self, page: usize) -> String {
         match self.document {
             Some(ref document) => {
-                // TODO: Replace svg_merged by something where we can tell the pages apart
-                typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
+                if page >= document.pages.len() {
+                    return "<pre class=\"typst-render-error\">Page out of bounds</pre>".to_string();
+                }
+                let page = &document.pages[page];
+                typst_svg::svg(page)
             }
             None => {
                 "<pre class=\"typst-render-error\">No document</pre>".to_string()
@@ -205,10 +208,14 @@ impl WasmWorld {
     }
 
     #[wasm_bindgen(js_name = goToDefinition)]
-    pub fn go_to_definition(&self, x: f64, y: f64) -> String {
+    pub fn go_to_definition(&self, page: usize, x: f64, y: f64) -> String {
         let point = Point::new(Abs::mm(x), Abs::mm(y));
         let document = self.document.as_ref().unwrap();
-        let frame = &document.pages[0].frame;
+        // TODO: boundary check for page
+        if page >= document.pages.len() {
+            return String::from("Page out of bounds");
+        }
+        let frame = &document.pages[page].frame;
         let jump = jump_from_click(self, document, frame, point);
         // String::from(format!("{:?}", jump))
         match jump {
