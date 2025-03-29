@@ -5,12 +5,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use typst::{Library, LibraryBuilder, World};
-use typst::diag::{FileError, FileResult};
+use typst::diag::{EcoString, FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
-use typst::layout::PagedDocument;
+use typst::layout::{Abs, PagedDocument, Point};
 use typst::syntax::{FileId, Source, VirtualPath};
+use typst::syntax::package::PackageSpec;
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
+use typst_ide::{jump_from_click, IdeWorld, Jump};
 use typst_pdf::{PdfOptions, Timestamp};
 use wasm_bindgen::prelude::*;
 
@@ -173,6 +175,7 @@ impl WasmWorld {
         }
     }
 
+    #[wasm_bindgen(js_name = renderPdf)]
     pub fn render_pdf(&self) -> Vec<u8> {
         match self.document {
             Some(ref document) => {
@@ -188,6 +191,7 @@ impl WasmWorld {
         }
     }
 
+    #[wasm_bindgen(js_name = renderSvg)]
     pub fn render_svg(&self) -> String {
         match self.document {
             Some(ref document) => {
@@ -197,6 +201,30 @@ impl WasmWorld {
             None => {
                 "<pre class=\"typst-render-error\">No document</pre>".to_string()
             }
+        }
+    }
+
+    #[wasm_bindgen(js_name = goToDefinition)]
+    pub fn go_to_definition(&self, x: f64, y: f64) -> String {
+        let point = Point::new(Abs::mm(x), Abs::mm(y));
+        let document = self.document.as_ref().unwrap();
+        let frame = &document.pages[0].frame;
+        let jump = jump_from_click(self, document, frame, point);
+        // String::from(format!("{:?}", jump))
+        match jump {
+            Some(Jump::Position(pos)) => {
+                let page = pos.page.get();
+                let point = pos.point;
+                String::from(format!("Page: {:?}, Point: {:?}", page, point))
+            }
+            Some(Jump::File(id, cursor)) => {
+                let file_path = id.vpath().as_rooted_path();
+                String::from(format!("File: {:?}, Cursor: {:?}", file_path, cursor))
+            }
+            Some(Jump::Url(url)) => {
+                String::from(format!("Url: {:?}", url))
+            }
+            None => String::from(format!("Input: {:?}, Frame size: {:?}, Frame: {:?}", point, frame.size(), frame)),
         }
     }
 
@@ -252,6 +280,12 @@ impl World for WasmWorld {
 
     fn today(&self, _offset: Option<i64>) -> Option<Datetime> {
         Datetime::from_ymd(1970, 1, 1)
+    }
+}
+
+impl IdeWorld for WasmWorld {
+    fn upcast(&self) -> &dyn World {
+        self
     }
 }
 
