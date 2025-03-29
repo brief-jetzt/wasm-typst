@@ -174,6 +174,14 @@ impl WasmWorld {
             }
         }
     }
+    
+    #[wasm_bindgen(js_name = getPageCount)]
+    pub fn get_page_count(&self) -> usize {
+        match self.document {
+            Some(ref document) => document.pages.len(),
+            None => 0
+        }
+    }
 
     #[wasm_bindgen(js_name = renderPdf)]
     pub fn render_pdf(&self) -> Vec<u8> {
