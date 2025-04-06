@@ -29,6 +29,6 @@ fn render_svg_with_main_source() {
     let sources = vec![SourceInput::new(String::from("main.typ"), String::from("Hello world"))];
     world.set_sources_and_files(sources, vec![]);
     world.compile(JsValue::NULL);
-    let svg = world.render_svg();
+    let svg = world.render_svg(0);
     assert!(svg.starts_with("<svg"));
 }
