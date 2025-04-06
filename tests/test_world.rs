@@ -32,3 +32,13 @@ fn render_svg_with_main_source() {
     let svg = world.render_svg(0);
     assert!(svg.starts_with("<svg"));
 }
+
+#[wasm_bindgen_test]
+fn count_pages() {
+    let mut world = WasmWorld::new();
+    let sources = vec![SourceInput::new(String::from("main.typ"), String::from("Hello world"))];
+    world.set_sources_and_files(sources, vec![]);
+    world.compile(JsValue::NULL);
+    let pages = world.get_page_count();
+    assert_eq!(pages, 1);
+}
