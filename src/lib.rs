@@ -4,13 +4,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use typst::{Library, LibraryBuilder, World};
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
-use typst::layout::PagedDocument;
+use typst::layout::{Abs, PagedDocument, Point};
 use typst::syntax::{FileId, Source, VirtualPath};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
+use typst::{Library, LibraryBuilder, World};
+use typst_ide::{jump_from_click, IdeWorld, Jump};
 use typst_pdf::{PdfOptions, Timestamp};
 use wasm_bindgen::prelude::*;
 
@@ -49,6 +50,20 @@ pub struct FileInput {
 pub struct SourceInput {
     path: String,
     source: String,
+}
+
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct DefinitionPosition {
+    #[wasm_bindgen(getter_with_clone)]
+    pub path: String,
+    pub cursor: usize,
+}
+
+#[wasm_bindgen]
+pub struct PageSize {
+    pub width: f64,
+    pub height: f64,
 }
 
 struct FileSlot {
@@ -173,6 +188,32 @@ impl WasmWorld {
         }
     }
 
+    #[wasm_bindgen(js_name = getPageCount)]
+    pub fn get_page_count(&self) -> usize {
+        match self.document {
+            Some(ref document) => document.pages.len(),
+            None => 0,
+        }
+    }
+
+    #[wasm_bindgen(js_name = getPageSize)]
+    pub fn get_page_size(&self, page: usize) -> Option<PageSize> {
+        match self.document {
+            Some(ref document) => {
+                if page >= self.get_page_count() {
+                    return None;
+                }
+                let page = &document.pages[page];
+                let size = page.frame.size();
+                let width = size.to_point().x.to_mm();
+                let height = size.to_point().y.to_mm();
+                Some(PageSize { width, height })
+            }
+            None => None,
+        }
+    }
+
+    #[wasm_bindgen(js_name = renderPdf)]
     pub fn render_pdf(&self) -> Vec<u8> {
         match self.document {
             Some(ref document) => {
@@ -183,26 +224,60 @@ impl WasmWorld {
                     standards: Default::default(),
                 };
                 typst_pdf::pdf(document, &options).unwrap()
-            },
-            None => Vec::new()
+            }
+            None => Vec::new(),
         }
     }
 
-    pub fn render_svg(&self) -> String {
+    #[wasm_bindgen(js_name = renderSvg)]
+    pub fn render_svg(&self, page: usize) -> String {
         match self.document {
             Some(ref document) => {
-                // TODO: Replace svg_merged by something where we can tell the pages apart
-                typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
+                if page >= self.get_page_count() {
+                    return "<pre class=\"typst-render-error\">Page out of bounds</pre>"
+                        .to_string();
+                }
+                let page = &document.pages[page];
+                typst_svg::svg(page)
             }
-            None => {
-                "<pre class=\"typst-render-error\">No document</pre>".to_string()
+            None => "<pre class=\"typst-render-error\">No document</pre>".to_string(),
+        }
+    }
+
+    #[wasm_bindgen(js_name = goToDefinition)]
+    pub fn go_to_definition(&self, page: usize, x: f64, y: f64) -> Option<DefinitionPosition> {
+        if page >= self.get_page_count() {
+            return None;
+        }
+        let point = Point::new(Abs::mm(x), Abs::mm(y));
+        let document = self.document.as_ref().unwrap();
+        let frame = &document.pages[page].frame;
+        let jump = jump_from_click(self, document, frame, point);
+        // String::from(format!("{:?}", jump))
+        match jump {
+            Some(Jump::Position(_pos)) => {
+                // TODO: I don't know when a Position is returned and what it would be useful for
+                // let page = pos.page.get();
+                // let point = pos.point;
+                // String::from(format!("Page: {:?}, Point: {:?}", page, point))
+                None
             }
+            Some(Jump::File(id, cursor)) => {
+                let path = String::from(id.vpath().as_rooted_path().to_str().unwrap());
+                Some(DefinitionPosition { path, cursor })
+            }
+            Some(Jump::Url(_url)) => {
+                // TODO: I don't know when a Url is returned
+                None
+            }
+            None => None,
         }
     }
 
     fn set_inputs(&mut self, inputs: JsValue) {
         // TODO: proper typing for JsValue
-        let inputs: HashMap<String, String> = serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
+        let inputs: HashMap<String, String> =
+            serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
         let mut dict = Dict::new();
         for (key, value) in inputs {
             dict.insert(Str::from(key), Value::Str(Str::from(value)));
@@ -235,11 +310,11 @@ impl World for WasmWorld {
             }
         }
         // Ok(file_slot.source.clone())
-//         let text = String::from("= Hello world
-// This is an *awesome* example _document_.
-//         ");
-//         let source = Source::new(id, String::from(text));
-//         Ok(source)
+        //         let text = String::from("= Hello world
+        // This is an *awesome* example _document_.
+        //         ");
+        //         let source = Source::new(id, String::from(text));
+        //         Ok(source)
     }
 
     fn file(&self, _id: FileId) -> FileResult<Bytes> {
@@ -252,6 +327,12 @@ impl World for WasmWorld {
 
     fn today(&self, _offset: Option<i64>) -> Option<Datetime> {
         Datetime::from_ymd(1970, 1, 1)
+    }
+}
+
+impl IdeWorld for WasmWorld {
+    fn upcast(&self) -> &dyn World {
+        self
     }
 }
 
