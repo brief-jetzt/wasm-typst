@@ -1,4 +1,3 @@
-use typst::html::tag::data;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_test::*;
 use wasm_typst::{FontInput, SourceInput, WasmWorld};
