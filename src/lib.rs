@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use typst::{Library, LibraryBuilder, World};
+use typst::{Library, LibraryExt, World};
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
 use typst::layout::PagedDocument;
@@ -181,8 +181,9 @@ impl WasmWorld {
                     timestamp: now(),
                     page_ranges: None,
                     standards: Default::default(),
+                    tagged: true,
                 };
-                typst_pdf::pdf(document, &options).unwrap()
+                typst_pdf::pdf(document, &options).unwrap_or_default()
             },
             None => Vec::new()
         }
@@ -207,7 +208,7 @@ impl WasmWorld {
         for (key, value) in inputs {
             dict.insert(Str::from(key), Value::Str(Str::from(value)));
         }
-        self.library = LazyHash::new(LibraryBuilder::default().with_inputs(dict).build());
+        self.library = LazyHash::new(Library::builder().with_inputs(dict).build());
     }
 }
 
