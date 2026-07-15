@@ -2,7 +2,7 @@
 name = "wasm-typst"
 version = "0.15.0"
 authors = ["Soeren Wegener <wegener92@gmail.com>"]
-edition = "2018"
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
