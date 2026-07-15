@@ -59,6 +59,13 @@ struct FontSlot {
     font: OnceLock<Option<Font>>,
 }
 
+fn file_id(path: &str) -> FileId {
+    FileId::new(RootedPath::new(
+        VirtualRoot::Project,
+        VirtualPath::new(path).expect("invalid path"),
+    ))
+}
+
 impl FontSlot {
     fn get(&self) -> Option<Font> {
         self.font
@@ -126,33 +133,81 @@ impl WasmWorld {
         let mut slots = self.slots.lock().unwrap();
         slots.clear();
         for file in files {
-            let file_id = FileId::new(RootedPath::new(VirtualRoot::Project, VirtualPath::new(file.path).expect("invalid file path")));
+            let id = file_id(&file.path);
             slots.insert(
-                file_id,
+                id,
                 FileSlot {
-                    _id: file_id,
-                    source: Source::new(file_id, String::new()),
+                    _id: id,
+                    source: Source::new(id, String::new()),
                     _file: Bytes::new(file.data),
                 },
             );
         }
         for source in sources {
-            let file_id = FileId::new(RootedPath::new(VirtualRoot::Project, VirtualPath::new(source.path).expect("invalid source path")));
+            let id = file_id(&source.path);
             slots.insert(
-                file_id,
+                id,
                 FileSlot {
-                    _id: file_id,
-                    source: Source::new(file_id, source.source),
+                    _id: id,
+                    source: Source::new(id, source.source),
                     _file: Bytes::new(Vec::new()),
                 },
             );
         }
     }
 
+    /// Incrementally update a single source without touching the others.
+    ///
+    /// Reuses the existing [`Source`] via [`Source::replace`], so typst only
+    /// reparses the changed span instead of parsing the whole file from scratch
+    /// (see `typst-kit`'s `SlotCell`). Inserts a fresh source if the path is new.
+    #[wasm_bindgen(js_name = updateSource)]
+    pub fn update_source(&self, path: String, source: String) {
+        let id = file_id(&path);
+        let mut slots = self.slots.lock().unwrap();
+        match slots.get_mut(&id) {
+            Some(slot) => {
+                slot.source.replace(&source);
+            }
+            None => {
+                slots.insert(
+                    id,
+                    FileSlot {
+                        _id: id,
+                        source: Source::new(id, source),
+                        _file: Bytes::new(Vec::new()),
+                    },
+                );
+            }
+        }
+    }
+
+    /// Update a single binary file's bytes, inserting it if the path is new.
+    #[wasm_bindgen(js_name = updateFile)]
+    pub fn update_file(&self, path: String, data: Vec<u8>) {
+        let id = file_id(&path);
+        let mut slots = self.slots.lock().unwrap();
+        match slots.get_mut(&id) {
+            Some(slot) => {
+                slot._file = Bytes::new(data);
+            }
+            None => {
+                slots.insert(
+                    id,
+                    FileSlot {
+                        _id: id,
+                        source: Source::new(id, String::new()),
+                        _file: Bytes::new(data),
+                    },
+                );
+            }
+        }
+    }
+
     pub fn compile(&mut self, inputs: JsValue) -> String {
         self.set_inputs(inputs);
         let warned = typst::compile::<PagedDocument>(self);
-        match warned.output {
+        let res = match warned.output {
             Ok(document) => {
                 self.document = Some(document);
                 let mut res = String::new();
@@ -161,12 +216,12 @@ impl WasmWorld {
                 }
                 res
             }
-            Err(e) => {
-                let mut res = String::new();
-                res.push_str(&format!("{:?}\n", e));
-                res
-            }
-        }
+            Err(e) => format!("{:?}\n", e),
+        };
+        // Bound the memoization cache. A long-lived World is reused across many
+        // renders; without eviction comemo's cache would grow unbounded.
+        comemo::evict(10);
+        res
     }
 
     pub fn render_pdf(&self) -> Vec<u8> {
@@ -220,7 +275,7 @@ impl World for WasmWorld {
     }
 
     fn main(&self) -> FileId {
-        FileId::new(RootedPath::new(VirtualRoot::Project, VirtualPath::new("main.typ").expect("invalid main path")))
+        file_id("main.typ")
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {

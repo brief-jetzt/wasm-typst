@@ -1,13 +1,13 @@
 // Ergonomic wrapper around the raw wasm `World`. Each renderer owns one wasm
 // instance — construct as many as you need.
 //
-// The wasm `setSourcesAndFiles`/`setFonts` methods fully *replace* their inputs
-// (there is no incremental update on the Rust side), so this wrapper keeps the
-// full source/file/font state on the JS side and re-sends all of it on every
-// update. That state-keeping is the whole point of the wrapper.
+// Single-value updates (updateSource/updateFile) go through the wasm World's
+// incremental methods, so the Rust side reuses the existing parse tree and only
+// reparses the changed span. The World owns the authoritative source/file state;
+// this wrapper is a thin, ergonomic front for it.
 
 // The `../pkg/...` specifier is rewritten to `./wasm_typst.js` at build time
-// (build.sh), once this file has been emitted into pkg/ next to it.
+// (tsdown onSuccess), once this file has been emitted into pkg/ next to it.
 import { World, FontInput, SourceInput, FileInput } from "../pkg/wasm_typst.js";
 
 export interface FontSource {
@@ -53,30 +53,17 @@ export interface TypstRenderer extends Disposable{
 
 class Renderer implements TypstRenderer {
   #world: World;
-  #fonts: FontSource[];
-  #sources = new Map<string, string>();
-  #files = new Map<string, Uint8Array>();
 
   constructor(opts: TypstRendererOptions = {}) {
     this.#world = World.new();
-    this.#fonts = opts.fonts ?? [];
-    for (const [path, content] of Object.entries(opts.sources ?? {})) {
-      this.#sources.set(path, content);
-    }
-    for (const [path, data] of Object.entries(opts.files ?? {})) {
-      this.#files.set(path, data);
-    }
-    if (this.#fonts.length > 0) this.#syncFonts();
-    this.#syncSourcesAndFiles();
-  }
-
-  #syncFonts(): void {
-    this.#world.setFonts(this.#fonts.map((f) => FontInput.new(f.path, f.data)));
-  }
-
-  #syncSourcesAndFiles(): void {
-    const sources = [...this.#sources].map(([p, s]) => SourceInput.new(p, s));
-    const files = [...this.#files].map(([p, d]) => FileInput.new(p, d));
+    if (opts.fonts?.length) this.setFonts(opts.fonts);
+    // Bulk-load the initial set in one call; later edits go incremental.
+    const sources = Object.entries(opts.sources ?? {}).map(([p, s]) =>
+      SourceInput.new(p, s),
+    );
+    const files = Object.entries(opts.files ?? {}).map(([p, d]) =>
+      FileInput.new(p, d),
+    );
     this.#world.setSourcesAndFiles(sources, files);
   }
 
@@ -93,32 +80,25 @@ class Renderer implements TypstRenderer {
   }
 
   updateSource(path: string, content: string): void {
-    this.#sources.set(path, content);
-    this.#syncSourcesAndFiles();
+    this.#world.updateSource(path, content);
   }
 
   updateFile(path: string, data: Uint8Array): void {
-    this.#files.set(path, data);
-    this.#syncSourcesAndFiles();
+    this.#world.updateFile(path, data);
   }
 
   setFonts(fonts: FontSource[]): void {
-    this.#fonts = fonts;
-    this.#syncFonts();
+    this.#world.setFonts(fonts.map((f) => FontInput.new(f.path, f.data)));
   }
 
   update(patch: TypstRendererOptions): void {
     if (patch.fonts) this.setFonts(patch.fonts);
-    let touched = false;
     for (const [path, content] of Object.entries(patch.sources ?? {})) {
-      this.#sources.set(path, content);
-      touched = true;
+      this.#world.updateSource(path, content);
     }
     for (const [path, data] of Object.entries(patch.files ?? {})) {
-      this.#files.set(path, data);
-      touched = true;
+      this.#world.updateFile(path, data);
     }
-    if (touched) this.#syncSourcesAndFiles();
   }
 
   dispose(): void {
