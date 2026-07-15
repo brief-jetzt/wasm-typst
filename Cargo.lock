@@ -2934,7 +2934,7 @@ checksum = "c31d56021e873866c968588ed85ccdf56db5c426e44afdb4618c39895104b920"
 
 [[package]]
 name = "wasm-typst"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "comemo",
  "console_error_panic_hook",
