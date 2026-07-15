@@ -5,15 +5,6 @@ on:
   push:
 
 jobs:
-  shellcheck:
-    runs-on: ubuntu-22.04
-    steps:
-    - uses: actions/checkout@v4
-    - name: shellcheck ./**/*.sh
-      uses: ludeeus/action-shellcheck@2.0.0
-      with:
-        check_together: 'yes'
-
   test:
     runs-on: ubuntu-22.04
     steps:

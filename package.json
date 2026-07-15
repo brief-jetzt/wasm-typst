@@ -1,0 +1,14 @@
+{
+  "name": "wasm-typst-glue",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wasm-pack build && tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsdown": "^0.15.6",
+    "typescript": "^5.9.2",
+    "wasm-pack": "^0.13.1"
+  }
+}

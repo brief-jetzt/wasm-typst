@@ -17,12 +17,12 @@ jobs:
       steps:
       - uses: actions/checkout@v2
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - run: ./build.sh
       - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
           registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm run build # wasm-pack comes from devDependencies
       - run: npm publish --access public --provenance
         working-directory: ./pkg
         env:

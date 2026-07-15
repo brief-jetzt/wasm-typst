@@ -9,7 +9,38 @@ This package allows you to use the [typst][typst] library in the browser.
 
 ## Usage
 
-TODO
+The package ships an ergonomic wrapper. Each renderer owns its own wasm
+instance, so you can create as many as you need:
+
+```ts
+import { createTypstRenderer } from "@brief-jetzt/wasm-typst";
+
+const renderer = createTypstRenderer({
+  fonts: [{ path: "MyFont.ttf", data: fontBytes }], // Uint8Array; optional
+  sources: {
+    "main.typ": "#set text(font: \"My Font\")\nHello #sys.inputs.name",
+  },
+  // files: { "logo.png": pngBytes },  // optional binary assets
+});
+
+const { output, diagnostics } = renderer.render({
+  type: "pdf", // or "svg"
+  input: { name: "world" }, // typst sys.inputs
+});
+// output: Uint8Array (pdf) or string (svg)
+// diagnostics: compiler errors/warnings as a string ("" when clean)
+
+renderer.updateSource("main.typ", "Changed");
+renderer.update({ sources: { "main.typ": "..." } }); // shallow-merge
+
+renderer.dispose(); // frees the wasm instance (or `using renderer = ...`)
+```
+
+The raw wasm classes (`World`, `SourceInput`, …) are still exported for direct
+use if you need them.
+
+Requires a bundler (Vite, webpack, …) — the package uses the wasm-pack
+*bundler* target.
 
 ## Developing
 
@@ -19,10 +50,12 @@ Running tests:
 wasm-pack test --chrome --firefox --headless
 ```
 
-Building the package:
+Building the package (runs `wasm-pack build`, then bundles the TS glue into
+`pkg/`):
 
-```
-wasm-pack build
+```sh
+npm ci
+npm run build
 ```
 
 You can then install the package in another npm project:
