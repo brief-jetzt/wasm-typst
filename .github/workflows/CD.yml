@@ -6,21 +6,22 @@ on:
       - 'v*'
 
 jobs:
-    build:
-      runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-      permissions:
-        contents: read
-        packages: write
-        id-token: write
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
 
-      steps:
+    steps:
       - uses: actions/checkout@v2
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - uses: actions/setup-node@v4
         with:
           node-version: latest
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
       - run: npm ci
       - run: npm run build # wasm-pack comes from devDependencies
       - run: npm publish --access public --provenance
