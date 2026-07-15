@@ -25,5 +25,3 @@ jobs:
       - run: node --run build
       - run: npm publish --access public --provenance
         working-directory: ./pkg
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
