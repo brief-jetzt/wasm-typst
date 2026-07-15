@@ -1,11 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2025",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ESNext", "DOM"],
     "strict": true,
     "skipLibCheck": true,
+
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noImplicitOverride": true,
+
     "noEmit": true
   },
   "include": ["js"]

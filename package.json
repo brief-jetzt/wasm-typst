@@ -6,7 +6,7 @@
   "scripts": {
     "build": "wasm-pack build && tsdown",
     "test": "wasm-pack test --chrome --firefox --headless",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc"
   },
   "devDependencies": {
     "oxfmt": "^0.59.0",
