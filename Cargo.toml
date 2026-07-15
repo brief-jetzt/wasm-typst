@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-wasm-bindgen = "0.2.84"
+wasm-bindgen = "0.2.126"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -24,13 +24,11 @@ typst-pdf = "0.15.0"
 typst-svg = "0.15.0"
 typst-render = "0.15.0"
 typst-ide = "0.15.0"
-#typst-timing = { version = "0.15.0", features = ["wasm"]}
 comemo = "0.5.1"
 serde-wasm-bindgen = "0.6.5"
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.34"
+wasm-bindgen-test = "0.3.76"
 
 [profile.release]
-# Tell `rustc` to optimize for small code size.
 opt-level = "s"
