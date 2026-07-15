@@ -48,9 +48,8 @@ pub struct SourceInput {
 }
 
 struct FileSlot {
-    _id: FileId,
     source: Source,
-    _file: Bytes,
+    file: Bytes,
 }
 
 struct FontSlot {
@@ -137,9 +136,8 @@ impl WasmWorld {
             slots.insert(
                 id,
                 FileSlot {
-                    _id: id,
                     source: Source::new(id, String::new()),
-                    _file: Bytes::new(file.data),
+                    file: Bytes::new(file.data),
                 },
             );
         }
@@ -148,9 +146,8 @@ impl WasmWorld {
             slots.insert(
                 id,
                 FileSlot {
-                    _id: id,
                     source: Source::new(id, source.source),
-                    _file: Bytes::new(Vec::new()),
+                    file: Bytes::new(Vec::new()),
                 },
             );
         }
@@ -173,9 +170,8 @@ impl WasmWorld {
                 slots.insert(
                     id,
                     FileSlot {
-                        _id: id,
                         source: Source::new(id, source),
-                        _file: Bytes::new(Vec::new()),
+                        file: Bytes::new(Vec::new()),
                     },
                 );
             }
@@ -189,15 +185,14 @@ impl WasmWorld {
         let mut slots = self.slots.lock().unwrap();
         match slots.get_mut(&id) {
             Some(slot) => {
-                slot._file = Bytes::new(data);
+                slot.file = Bytes::new(data);
             }
             None => {
                 slots.insert(
                     id,
                     FileSlot {
-                        _id: id,
                         source: Source::new(id, String::new()),
-                        _file: Bytes::new(data),
+                        file: Bytes::new(data),
                     },
                 );
             }
@@ -242,10 +237,11 @@ impl WasmWorld {
         }
     }
 
+    /// Render all pages merged into a single SVG (pages stacked with a gap).
+    /// Use [`render_svg_pages`](Self::render_svg_pages) to keep pages separate.
     pub fn render_svg(&self) -> String {
         match self.document {
             Some(ref document) => {
-                // TODO: Replace svg_merged by something where we can tell the pages apart
                 typst_svg::svg_merged(document, &SvgOptions::default(), typst::layout::Abs::pt(5.0))
             }
             None => {
@@ -254,8 +250,22 @@ impl WasmWorld {
         }
     }
 
+    /// Render each page to its own SVG string, in page order.
+    #[wasm_bindgen(js_name = renderSvgPages)]
+    pub fn render_svg_pages(&self) -> Vec<String> {
+        match self.document {
+            Some(ref document) => document
+                .pages()
+                .iter()
+                .map(|page| typst_svg::svg(page, &SvgOptions::default()))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
     fn set_inputs(&mut self, inputs: JsValue) {
-        // TODO: proper typing for JsValue
+        // `inputs` is a plain JS object (Record<string, string>); the typed
+        // `Inputs` contract lives in the JS wrapper. Deserialize it into a dict.
         let inputs: HashMap<String, String> = serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
         let mut dict = Dict::new();
         for (key, value) in inputs {
@@ -290,8 +300,12 @@ impl World for WasmWorld {
         }
     }
 
-    fn file(&self, _id: FileId) -> FileResult<Bytes> {
-        todo!()
+    fn file(&self, id: FileId) -> FileResult<Bytes> {
+        let slots = self.slots.lock().unwrap();
+        match slots.get(&id) {
+            Some(slot) => Ok(slot.file.clone()),
+            None => Err(FileError::NotFound(PathBuf::from(id.vpath().get_with_slash()))),
+        }
     }
 
     fn font(&self, index: usize) -> Option<Font> {

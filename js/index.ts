@@ -39,6 +39,8 @@ export interface RenderResult<T> {
 export interface TypstRenderer extends Disposable{
   render(req: { type: "pdf"; input?: Inputs }): RenderResult<Uint8Array>;
   render(req: { type: "svg"; input?: Inputs }): RenderResult<string>;
+  /** One SVG string per page, in page order. */
+  render(req: { type: "svg-pages"; input?: Inputs }): RenderResult<string[]>;
   /** Set or replace a single source, then re-sync. */
   updateSource(path: string, content: string): void;
   /** Set or replace a single binary file, then re-sync. */
@@ -69,13 +71,18 @@ class Renderer implements TypstRenderer {
 
   render(req: { type: "pdf"; input?: Inputs }): RenderResult<Uint8Array>;
   render(req: { type: "svg"; input?: Inputs }): RenderResult<string>;
+  render(req: { type: "svg-pages"; input?: Inputs }): RenderResult<string[]>;
   render(req: {
-    type: "pdf" | "svg";
+    type: "pdf" | "svg" | "svg-pages";
     input?: Inputs;
-  }): RenderResult<Uint8Array | string> {
+  }): RenderResult<Uint8Array | string | string[]> {
     const diagnostics = this.#world.compile(req.input ?? {});
     const output =
-      req.type === "pdf" ? this.#world.render_pdf() : this.#world.render_svg();
+      req.type === "pdf"
+        ? this.#world.render_pdf()
+        : req.type === "svg-pages"
+          ? this.#world.renderSvgPages()
+          : this.#world.render_svg();
     return { output, diagnostics };
   }
 
