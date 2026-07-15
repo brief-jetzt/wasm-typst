@@ -36,7 +36,7 @@ export interface RenderResult<T> {
   diagnostics: string;
 }
 
-export interface TypstRenderer {
+export interface TypstRenderer extends Disposable{
   render(req: { type: "pdf"; input?: Inputs }): RenderResult<Uint8Array>;
   render(req: { type: "svg"; input?: Inputs }): RenderResult<string>;
   /** Set or replace a single source, then re-sync. */
@@ -49,7 +49,6 @@ export interface TypstRenderer {
   update(patch: TypstRendererOptions): void;
   /** Free the underlying wasm instance. */
   dispose(): void;
-  [Symbol.dispose](): void;
 }
 
 class Renderer implements TypstRenderer {
