@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "wasm-pack build && tsdown",
+    "test": "wasm-pack test --chrome --firefox --headless",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
