@@ -18,3 +18,34 @@ jobs:
       - run: node --run ci
       - run: node --run build
       - run: node --run test
+
+  pages:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: latest
+          cache: npm
+      - run: npm ci
+      - run: node --run build
+      - run: npm ci
+        working-directory: ./examples
+      - run: node --run build -- --base=/wasm-typst/
+        working-directory: ./examples
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./examples/dist
+      - id: deployment
+        uses: actions/deploy-pages@v5
