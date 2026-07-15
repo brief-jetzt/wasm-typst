@@ -2940,6 +2940,7 @@ dependencies = [
  "console_error_panic_hook",
  "serde-wasm-bindgen",
  "typst",
+ "typst-assets",
  "typst-ide",
  "typst-layout",
  "typst-pdf",

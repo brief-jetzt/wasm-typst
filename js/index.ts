@@ -36,11 +36,35 @@ export interface RenderResult<T> {
   diagnostics: string;
 }
 
+/** Where a click in the rendered document points to in the sources. */
+export interface DefinitionPosition {
+  /** Source path as passed in `sources`/`updateSource`, e.g. "main.typ". */
+  path: string;
+  /** Byte offset into that source. */
+  cursor: number;
+}
+
+/** Page dimensions in millimeters. */
+export interface PageSize {
+  width: number;
+  height: number;
+}
+
 export interface TypstRenderer extends Disposable {
   render(req: { type: "pdf"; input?: Inputs }): RenderResult<Uint8Array>;
   render(req: { type: "svg"; input?: Inputs }): RenderResult<string>;
   /** One SVG string per page, in page order. */
   render(req: { type: "svg-pages"; input?: Inputs }): RenderResult<string[]>;
+  /**
+   * Map a click at (xMm, yMm) millimeters from the top-left of the given
+   * 0-based page to a source position ("go to definition"). Requires a prior
+   * render(); returns undefined when the click hits nothing jumpable.
+   */
+  goToDefinition(page: number, xMm: number, yMm: number): DefinitionPosition | undefined;
+  /** Number of pages in the compiled document (0 before the first render()). */
+  getPageCount(): number;
+  /** Page dimensions in mm; undefined if page is out of bounds or nothing rendered yet. */
+  getPageSize(page: number): PageSize | undefined;
   /** Set or replace a single source, then re-sync. */
   updateSource(path: string, content: string): void;
   /** Set or replace a single binary file, then re-sync. */
@@ -80,6 +104,32 @@ class Renderer implements TypstRenderer {
           ? this.#world.renderSvgPages()
           : this.#world.render_svg();
     return { output, diagnostics };
+  }
+
+  goToDefinition(page: number, xMm: number, yMm: number): DefinitionPosition | undefined {
+    // Copy into a plain object and free the wasm handle so consumers never
+    // have to manage wasm memory themselves.
+    const pos = this.#world.goToDefinition(page, xMm, yMm);
+    if (pos === undefined) return undefined;
+    try {
+      return { path: pos.path, cursor: pos.cursor };
+    } finally {
+      pos.free();
+    }
+  }
+
+  getPageCount(): number {
+    return this.#world.getPageCount();
+  }
+
+  getPageSize(page: number): PageSize | undefined {
+    const size = this.#world.getPageSize(page);
+    if (size === undefined) return undefined;
+    try {
+      return { width: size.width, height: size.height };
+    } finally {
+      size.free();
+    }
   }
 
   updateSource(path: string, content: string): void {

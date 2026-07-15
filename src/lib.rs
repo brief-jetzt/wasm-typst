@@ -2,14 +2,18 @@ mod utils;
 
 use std::collections::HashMap;
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use typst::{Library, LibraryExt, World};
 use typst::diag::{FileError, FileResult};
 use typst::foundations::{Bytes, Datetime, Dict, Duration, Smart, Str, Value};
+use typst::introspection::PagedPosition;
+use typst::layout::{Abs, Point};
 use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
+use typst_ide::{IdeWorld, Jump, jump_from_click};
 use typst_layout::PagedDocument;
 use typst_pdf::{PdfOptions, Timestamp};
 use typst_svg::SvgOptions;
@@ -45,6 +49,25 @@ pub struct FileInput {
 pub struct SourceInput {
     path: String,
     source: String,
+}
+
+/// Where a click in the rendered document points to in the sources.
+#[wasm_bindgen]
+#[derive(Debug)]
+pub struct DefinitionPosition {
+    /// Source path without leading slash, e.g. `main.typ` — matches the path
+    /// keys passed to `SourceInput`/`updateSource`.
+    #[wasm_bindgen(getter_with_clone)]
+    pub path: String,
+    /// Byte offset into that source.
+    pub cursor: usize,
+}
+
+/// Page dimensions in millimeters.
+#[wasm_bindgen]
+pub struct PageSize {
+    pub width: f64,
+    pub height: f64,
 }
 
 struct FileSlot {
@@ -263,6 +286,43 @@ impl WasmWorld {
         }
     }
 
+    /// Number of pages in the compiled document (0 before a successful compile).
+    #[wasm_bindgen(js_name = getPageCount)]
+    pub fn get_page_count(&self) -> usize {
+        self.document.as_ref().map_or(0, |d| d.pages().len())
+    }
+
+    /// Size of the given 0-based page in millimeters.
+    #[wasm_bindgen(js_name = getPageSize)]
+    pub fn get_page_size(&self, page: usize) -> Option<PageSize> {
+        let size = self.document.as_ref()?.pages().get(page)?.frame.size();
+        Some(PageSize {
+            width: size.x.to_mm(),
+            height: size.y.to_mm(),
+        })
+    }
+
+    /// Map a click at (x, y) millimeters from the top-left of the given
+    /// 0-based page to a position in the sources ("go to definition").
+    /// Returns `None` when the click hits nothing jumpable.
+    #[wasm_bindgen(js_name = goToDefinition)]
+    pub fn go_to_definition(&self, page: usize, x: f64, y: f64) -> Option<DefinitionPosition> {
+        let document = self.document.as_ref()?;
+        let position = PagedPosition {
+            page: NonZeroUsize::new(page + 1)?,
+            point: Point::new(Abs::mm(x), Abs::mm(y)),
+        };
+        match jump_from_click(self, document, &position)? {
+            Jump::File(id, cursor) => Some(DefinitionPosition {
+                path: id.vpath().get_without_slash().to_string(),
+                cursor,
+            }),
+            // Clicks on links (Url) or outline/reference targets (Position)
+            // are not source jumps.
+            Jump::Url(_) | Jump::Position(_) => None,
+        }
+    }
+
     fn set_inputs(&mut self, inputs: JsValue) {
         // `inputs` is a plain JS object (Record<string, string>); the typed
         // `Inputs` contract lives in the JS wrapper. Deserialize it into a dict.
@@ -314,6 +374,12 @@ impl World for WasmWorld {
 
     fn today(&self, _offset: Option<Duration>) -> Option<Datetime> {
         Datetime::from_ymd(1970, 1, 1)
+    }
+}
+
+impl IdeWorld for WasmWorld {
+    fn upcast(&self) -> &dyn World {
+        self
     }
 }
 
