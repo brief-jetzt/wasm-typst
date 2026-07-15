@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { defineConfig } from "tsdown";
 
 // Runs after `wasm-pack build` (see the `build` npm script). Emits
-// pkg/typst.js + pkg/typst.d.ts, then finishes wiring up the pkg/ folder that
+// pkg/typst.mjs + pkg/typst.d.mts, then finishes wiring up the pkg/ folder that
 // wasm-pack generated so it's ready to publish.
 export default defineConfig({
   entry: { typst: "js/index.ts" },
@@ -15,7 +15,7 @@ export default defineConfig({
   onSuccess() {
     // 1. The glue is authored against ../pkg/wasm_typst.js (dev path); once
     //    emitted into pkg/ it sits next to wasm_typst.js, so fix the specifier.
-    for (const f of ["pkg/typst.js", "pkg/typst.d.ts"]) {
+    for (const f of ["pkg/typst.mjs", "pkg/typst.d.mts"]) {
       writeFileSync(
         f,
         readFileSync(f, "utf8").replaceAll(
@@ -35,10 +35,10 @@ export default defineConfig({
       type: "git",
       url: "https://github.com/brief-jetzt/wasm-typst",
     };
-    pkg.main = "typst.js";
-    pkg.types = "typst.d.ts";
-    pkg.files = [...new Set([...pkg.files, "typst.js", "typst.d.ts"])];
-    pkg.sideEffects = [...new Set([...pkg.sideEffects, "./typst.js"])];
+    pkg.main = "typst.mjs";
+    pkg.types = "typst.d.mts";
+    pkg.files = [...new Set([...pkg.files, "typst.mjs", "typst.d.mts"])];
+    pkg.sideEffects = [...new Set([...pkg.sideEffects, "./typst.mjs"])];
     writeFileSync("pkg/package.json", JSON.stringify(pkg, null, 2) + "\n");
   },
 });

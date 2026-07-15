@@ -15,11 +15,6 @@ use typst_pdf::{PdfOptions, Timestamp};
 use typst_svg::SvgOptions;
 use wasm_bindgen::prelude::*;
 
-// #[wasm_bindgen]
-// extern "C" {
-//     fn alert(s: &str);
-// }
-
 #[wasm_bindgen(js_name = World)]
 pub struct WasmWorld {
     library: LazyHash<Library>,
@@ -238,12 +233,6 @@ impl World for WasmWorld {
                 Err(FileError::NotFound(PathBuf::from(file_path)))
             }
         }
-        // Ok(file_slot.source.clone())
-//         let text = String::from("= Hello world
-// This is an *awesome* example _document_.
-//         ");
-//         let source = Source::new(id, String::from(text));
-//         Ok(source)
     }
 
     fn file(&self, _id: FileId) -> FileResult<Bytes> {
