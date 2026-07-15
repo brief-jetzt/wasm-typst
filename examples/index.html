@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wasm-typst example</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        grid-template-columns: 1fr 1fr;
+        height: 100vh;
+      }
+      header, footer { grid-column: 1 / -1; padding: 0.5rem 1rem; background: #222; color: #eee; }
+      header h1 { font-size: 1rem; margin: 0; }
+      header p { margin: 0.25rem 0 0; font-size: 0.8rem; color: #aaa; }
+      #editor {
+        width: 100%;
+        height: 100%;
+        border: none;
+        border-right: 1px solid #ccc;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 14px;
+        resize: none;
+        outline: none;
+      }
+      #pages { overflow: auto; background: #888; padding: 1rem; }
+      #pages .page { margin: 0 auto 1rem; max-width: 100%; box-shadow: 0 2px 8px rgb(0 0 0 / 0.4); cursor: crosshair; }
+      #pages .page svg { display: block; width: 100%; height: auto; background: white; }
+      footer { font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>wasm-typst</h1>
+      <p>
+        Type on the left (incremental source updates), rendered as SVG on the
+        right. Click anywhere in the rendered document to jump the editor
+        cursor to the matching source position (go to definition).
+      </p>
+    </header>
+    <textarea id="editor" spellcheck="false">#set text(font: "Inter")
+
+= Hello from wasm-typst
+
+Click a word in this rendered document and the editor cursor jumps to it.
+
+#lorem(50)
+
+#pagebreak()
+
+== Second page
+
+#lorem(30)
+</textarea>
+    <div id="pages">Loading fonts…</div>
+    <footer id="status"></footer>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
