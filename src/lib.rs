@@ -6,12 +6,13 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use typst::{Library, LibraryExt, World};
 use typst::diag::{FileError, FileResult};
-use typst::foundations::{Bytes, Datetime, Dict, Smart, Str, Value};
-use typst::layout::PagedDocument;
-use typst::syntax::{FileId, Source, VirtualPath};
+use typst::foundations::{Bytes, Datetime, Dict, Duration, Smart, Str, Value};
+use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
+use typst_layout::PagedDocument;
 use typst_pdf::{PdfOptions, Timestamp};
+use typst_svg::SvgOptions;
 use wasm_bindgen::prelude::*;
 
 // #[wasm_bindgen]
@@ -130,7 +131,7 @@ impl WasmWorld {
         let mut slots = self.slots.lock().unwrap();
         slots.clear();
         for file in files {
-            let file_id = FileId::new(None, VirtualPath::new(file.path));
+            let file_id = FileId::new(RootedPath::new(VirtualRoot::Project, VirtualPath::new(file.path).expect("invalid file path")));
             slots.insert(
                 file_id,
                 FileSlot {
@@ -141,7 +142,7 @@ impl WasmWorld {
             );
         }
         for source in sources {
-            let file_id = FileId::new(None, VirtualPath::new(source.path));
+            let file_id = FileId::new(RootedPath::new(VirtualRoot::Project, VirtualPath::new(source.path).expect("invalid source path")));
             slots.insert(
                 file_id,
                 FileSlot {
@@ -178,10 +179,12 @@ impl WasmWorld {
             Some(ref document) => {
                 let options = PdfOptions {
                     ident: Smart::Auto,
+                    creator: Smart::Auto,
                     timestamp: now(),
                     page_ranges: None,
                     standards: Default::default(),
                     tagged: true,
+                    pretty: false,
                 };
                 typst_pdf::pdf(document, &options).unwrap_or_default()
             },
@@ -193,7 +196,7 @@ impl WasmWorld {
         match self.document {
             Some(ref document) => {
                 // TODO: Replace svg_merged by something where we can tell the pages apart
-                typst_svg::svg_merged(document, typst::layout::Abs::pt(5.0))
+                typst_svg::svg_merged(document, &SvgOptions::default(), typst::layout::Abs::pt(5.0))
             }
             None => {
                 "<pre class=\"typst-render-error\">No document</pre>".to_string()
@@ -222,7 +225,7 @@ impl World for WasmWorld {
     }
 
     fn main(&self) -> FileId {
-        FileId::new(None, VirtualPath::new("main.typ"))
+        FileId::new(RootedPath::new(VirtualRoot::Project, VirtualPath::new("main.typ").expect("invalid main path")))
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
@@ -231,7 +234,7 @@ impl World for WasmWorld {
         match slot.get(&id) {
             Some(file_slot) => Ok(file_slot.source.clone()),
             None => {
-                let file_path = id.vpath().as_rooted_path();
+                let file_path = id.vpath().get_with_slash();
                 Err(FileError::NotFound(PathBuf::from(file_path)))
             }
         }
@@ -251,7 +254,7 @@ impl World for WasmWorld {
         self.fonts[index].get()
     }
 
-    fn today(&self, _offset: Option<i64>) -> Option<Datetime> {
+    fn today(&self, _offset: Option<Duration>) -> Option<Datetime> {
         Datetime::from_ymd(1970, 1, 1)
     }
 }
