@@ -34,10 +34,6 @@ renderer.update({ sources: { "main.typ": "..." } }); // shallow-merge
 renderer.dispose(); // frees the wasm instance (or `using renderer = ...`)
 ```
 
-The raw wasm classes (`World`, `SourceInput`, …) are still exported for direct use if you need them.
-
-Requires a bundler (Vite, webpack, …) — the package uses the wasm-pack *bundler* target.
-
 ## Development
 Running tests:
 ```sh

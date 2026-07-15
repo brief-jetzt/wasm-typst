@@ -122,6 +122,3 @@ export function createTypstRenderer(
 ): TypstRenderer {
   return new Renderer(opts);
 }
-
-// Escape hatch: raw wasm classes.
-export * from "../pkg/wasm_typst.js";
