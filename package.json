@@ -5,7 +5,11 @@
   "license": "MIT",
   "scripts": {
     "build": "wasm-pack build && tsdown",
-    "test": "wasm-pack test --chrome --firefox --headless",
+    "test": "tsc && wasm-pack test --chrome --firefox --headless",
+    "ci": "oxlint --type-aware --deny-warnings -f github",
+    "format": "oxfmt",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
     "typecheck": "tsc"
   },
   "devDependencies": {
