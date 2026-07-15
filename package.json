@@ -1,8 +1,8 @@
 {
   "name": "wasm-typst-glue",
   "private": true,
-  "type": "module",
   "license": "MIT",
+  "type": "module",
   "scripts": {
     "build": "wasm-pack build && tsdown",
     "test": "tsc && wasm-pack test --chrome --firefox --headless",

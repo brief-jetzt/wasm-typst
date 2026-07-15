@@ -18,10 +18,7 @@ export default defineConfig({
     for (const f of ["pkg/typst.mjs", "pkg/typst.d.mts"]) {
       writeFileSync(
         f,
-        readFileSync(f, "utf8").replaceAll(
-          "../pkg/wasm_typst.js",
-          "./wasm_typst.js",
-        ),
+        readFileSync(f, "utf8").replaceAll("../pkg/wasm_typst.js", "./wasm_typst.js"),
       );
     }
 

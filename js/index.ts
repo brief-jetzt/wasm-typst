@@ -36,7 +36,7 @@ export interface RenderResult<T> {
   diagnostics: string;
 }
 
-export interface TypstRenderer extends Disposable{
+export interface TypstRenderer extends Disposable {
   render(req: { type: "pdf"; input?: Inputs }): RenderResult<Uint8Array>;
   render(req: { type: "svg"; input?: Inputs }): RenderResult<string>;
   /** One SVG string per page, in page order. */
@@ -60,12 +60,8 @@ class Renderer implements TypstRenderer {
     this.#world = World.new();
     if (opts.fonts?.length) this.setFonts(opts.fonts);
     // Bulk-load the initial set in one call; later edits go incremental.
-    const sources = Object.entries(opts.sources ?? {}).map(([p, s]) =>
-      SourceInput.new(p, s),
-    );
-    const files = Object.entries(opts.files ?? {}).map(([p, d]) =>
-      FileInput.new(p, d),
-    );
+    const sources = Object.entries(opts.sources ?? {}).map(([p, s]) => SourceInput.new(p, s));
+    const files = Object.entries(opts.files ?? {}).map(([p, d]) => FileInput.new(p, d));
     this.#world.setSourcesAndFiles(sources, files);
   }
 
@@ -95,7 +91,7 @@ class Renderer implements TypstRenderer {
   }
 
   setFonts(fonts: FontSource[]): void {
-    this.#world.setFonts(fonts.map((f) => FontInput.new(f.path, f.data)));
+    this.#world.setFonts(fonts.map(f => FontInput.new(f.path, f.data)));
   }
 
   update(patch: TypstRendererOptions): void {
@@ -117,8 +113,6 @@ class Renderer implements TypstRenderer {
   }
 }
 
-export function createTypstRenderer(
-  opts?: TypstRendererOptions,
-): TypstRenderer {
+export function createTypstRenderer(opts?: TypstRendererOptions): TypstRenderer {
   return new Renderer(opts);
 }
