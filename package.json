@@ -2,6 +2,7 @@
   "name": "wasm-typst-glue",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "build": "wasm-pack build && tsdown",
     "test": "wasm-pack test --chrome --firefox --headless",
