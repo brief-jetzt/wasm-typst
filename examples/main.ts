@@ -16,9 +16,7 @@ async function loadFont(url: string) {
   return { path: url.split("/").at(-1)!, data };
 }
 
-const fonts = await Promise.all(
-  [interRegular, interItalic, interBold].map(loadFont),
-);
+const fonts = await Promise.all([interRegular, interItalic, interBold].map(loadFont));
 
 const renderer = createTypstRenderer({
   fonts,
@@ -28,8 +26,9 @@ const renderer = createTypstRenderer({
 function rerender() {
   const { output, diagnostics } = renderer.render({ type: "svg-pages" });
   statusEl.textContent =
-    diagnostics.map(d => `${d.severity}: ${d.path ?? "?"}:${d.line ?? "?"}: ${d.message}`).join("\n")
-    || `ok — ${renderer.getPageCount()} page(s)`;
+    diagnostics
+      .map(d => `${d.severity}: ${d.path ?? "?"}:${d.line ?? "?"}: ${d.message}`)
+      .join("\n") || `ok — ${renderer.getPageCount()} page(s)`;
   pagesEl.replaceChildren(
     ...output.map((svg, i) => {
       const div = document.createElement("div");
@@ -50,7 +49,7 @@ editor.addEventListener("input", () => {
 
 // Go to definition: click on a rendered page → jump the editor cursor to the
 // matching source position.
-pagesEl.addEventListener("click", (e) => {
+pagesEl.addEventListener("click", e => {
   const pageEl = (e.target as Element).closest<HTMLElement>(".page");
   if (!pageEl) return;
   const page = Number(pageEl.dataset.page);

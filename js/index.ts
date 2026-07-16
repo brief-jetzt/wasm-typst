@@ -152,7 +152,9 @@ export interface TypstRenderer extends Disposable {
   /** One SVG string per page, in page order. */
   render(req: RenderRequestBase & { type: "svg-pages" }): RenderResult<string[]>;
   /** One PNG per page, in page order, at `pixelPerPt` resolution (default 1). */
-  render(req: RenderRequestBase & { type: "png-pages"; pixelPerPt?: number }): RenderResult<Uint8Array[]>;
+  render(
+    req: RenderRequestBase & { type: "png-pages"; pixelPerPt?: number },
+  ): RenderResult<Uint8Array[]>;
   /**
    * Render a single 0-based page to PNG at `pixelPerPt` resolution (default 1,
    * i.e. one pixel per typographic point). Requires a prior render(); undefined
@@ -214,18 +216,23 @@ class Renderer implements TypstRenderer {
   render(req: RenderRequestBase & { type: "pdf" }): RenderResult<Uint8Array>;
   render(req: RenderRequestBase & { type: "svg" }): RenderResult<string>;
   render(req: RenderRequestBase & { type: "svg-pages" }): RenderResult<string[]>;
-  render(req: RenderRequestBase & { type: "png-pages"; pixelPerPt?: number }): RenderResult<Uint8Array[]>;
-  render(req: RenderRequestBase & {
-    type: "pdf" | "svg" | "svg-pages" | "png-pages";
-    pixelPerPt?: number;
-  }): RenderResult<Uint8Array | string | string[] | Uint8Array[]> {
+  render(
+    req: RenderRequestBase & { type: "png-pages"; pixelPerPt?: number },
+  ): RenderResult<Uint8Array[]>;
+  render(
+    req: RenderRequestBase & {
+      type: "pdf" | "svg" | "svg-pages" | "png-pages";
+      pixelPerPt?: number;
+    },
+  ): RenderResult<Uint8Array | string | string[] | Uint8Array[]> {
     // Copy each wasm diagnostic into a plain object and free the handle so
     // consumers never have to manage wasm memory themselves.
     const diagnostics = this.#world.compile(req.input ?? {}, toEpochMillis(req.now)).map(d => {
       try {
         return {
           // Crosses the wasm boundary as a number; string is nicer to consume.
-          severity: d.severity === DiagnosticSeverity.Error ? ("error" as const) : ("warning" as const),
+          severity:
+            d.severity === DiagnosticSeverity.Error ? ("error" as const) : ("warning" as const),
           message: d.message,
           path: d.path,
           start: d.start,
