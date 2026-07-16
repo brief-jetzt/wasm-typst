@@ -10,10 +10,10 @@ use typst::diag::{FileError, FileResult, Severity, SourceDiagnostic};
 use typst::foundations::{Bytes, Datetime, Dict, Duration, Smart, Str, Value};
 use typst::introspection::PagedPosition;
 use typst::layout::{Abs, Point};
-use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
+use typst::syntax::{FileId, RootedPath, Side, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
-use typst_ide::{IdeWorld, Jump, jump_from_click};
+use typst_ide::{CompletionKind, IdeWorld, Jump, Tooltip, jump_from_click};
 use typst_layout::PagedDocument;
 use typst_pdf::{PdfOptions, Timestamp};
 use typst_svg::SvgOptions;
@@ -28,6 +28,9 @@ pub struct WasmWorld {
     // used to store the compiled document, so that we are able to
     // return compiler warnings in the .compile() method
     document: Option<PagedDocument>,
+    /// Wall-clock time as unix epoch milliseconds (UTC), passed in from JS on
+    /// each compile. `None` until then; `datetime.today()` errors in that case.
+    now_millis: Option<f64>,
 }
 
 #[wasm_bindgen]
@@ -102,6 +105,65 @@ pub struct PageSize {
     pub height: f64,
 }
 
+/// One autocomplete suggestion.
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct CompletionItem {
+    /// One of "syntax" | "func" | "type" | "param" | "constant" | "path" |
+    /// "package" | "label" | "font" | "symbol".
+    #[wasm_bindgen(getter_with_clone)]
+    pub kind: String,
+    /// The label the completion is shown with.
+    #[wasm_bindgen(getter_with_clone)]
+    pub label: String,
+    /// The completed version of the input, possibly using snippet syntax like
+    /// `${lhs} + ${rhs}`. Defaults to the label when absent.
+    #[wasm_bindgen(getter_with_clone)]
+    pub apply: Option<String>,
+    /// An optional short description.
+    #[wasm_bindgen(getter_with_clone)]
+    pub detail: Option<String>,
+}
+
+/// Result of [`WasmWorld::autocomplete`].
+#[wasm_bindgen]
+pub struct CompletionsResult {
+    /// Byte offset from which the completions replace text (up to the cursor).
+    pub from: usize,
+    #[wasm_bindgen(getter_with_clone)]
+    pub completions: Vec<CompletionItem>,
+}
+
+/// Kind of a [`TooltipInfo`]. Passed as a plain number over the wasm boundary.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TooltipKind {
+    /// Plain prose.
+    Text = 0,
+    /// A string of Typst code.
+    Code = 1,
+}
+
+/// Hover information for a cursor position.
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct TooltipInfo {
+    pub kind: TooltipKind,
+    #[wasm_bindgen(getter_with_clone)]
+    pub text: String,
+}
+
+/// A position in the rendered preview: millimeters from the top-left of the
+/// given 0-based page. Mirrors the coordinates [`WasmWorld::go_to_definition`]
+/// accepts.
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct PreviewPosition {
+    pub page: usize,
+    pub x: f64,
+    pub y: f64,
+}
+
 struct FileSlot {
     source: Source,
     file: Bytes,
@@ -161,6 +223,7 @@ impl WasmWorld {
             fonts: Vec::new(),
             slots: Mutex::new(HashMap::new()),
             document: None,
+            now_millis: None,
         }
     }
 
@@ -256,7 +319,12 @@ impl WasmWorld {
 
     /// Compile the sources. Returns the diagnostics, errors first (empty on a
     /// clean compile). On a hard error the previously compiled document is kept.
-    pub fn compile(&mut self, inputs: JsValue) -> Vec<Diagnostic> {
+    ///
+    /// `now_millis` is the current wall-clock time as unix epoch milliseconds
+    /// (UTC); it feeds `datetime.today()` and the PDF creation timestamp. When
+    /// omitted, `datetime.today()` errors ("unable to get the current date").
+    pub fn compile(&mut self, inputs: JsValue, now_millis: Option<f64>) -> Vec<Diagnostic> {
+        self.now_millis = now_millis;
         self.set_inputs(inputs);
         let warned = typst::compile::<PagedDocument>(self);
         let mut diagnostics = Vec::new();
@@ -306,7 +374,7 @@ impl WasmWorld {
                 let options = PdfOptions {
                     ident: Smart::Auto,
                     creator: Smart::Auto,
-                    timestamp: now(),
+                    timestamp: self.pdf_timestamp(),
                     page_ranges: None,
                     standards: Default::default(),
                     tagged: true,
@@ -329,6 +397,18 @@ impl WasmWorld {
                 "<pre class=\"typst-render-error\">No document</pre>".to_string()
             }
         }
+    }
+
+    /// Render the given 0-based page to a PNG at `pixel_per_pt` resolution
+    /// (1.0 = one pixel per typographic point). `None` if the page does not
+    /// exist or nothing was compiled yet.
+    pub fn render_png(&self, page: usize, pixel_per_pt: f64) -> Option<Vec<u8>> {
+        let page = self.document.as_ref()?.pages().get(page)?;
+        let options = typst_render::RenderOptions {
+            pixel_per_pt: typst::utils::Scalar::new(pixel_per_pt),
+            ..Default::default()
+        };
+        typst_render::render(page, &options).encode_png().ok()
     }
 
     /// Render each page to its own SVG string, in page order.
@@ -381,6 +461,96 @@ impl WasmWorld {
         }
     }
 
+    /// Autocomplete suggestions for the source at `path`, at byte offset
+    /// `cursor`. `explicit` says whether the user explicitly asked for
+    /// completions (e.g. Ctrl+Space) rather than them popping up while typing.
+    /// `None` when the file is unknown or there is nothing to suggest.
+    /// Suggestions improve after a compile (labels, for instance, need one).
+    pub fn autocomplete(
+        &self,
+        path: String,
+        cursor: usize,
+        explicit: bool,
+    ) -> Option<CompletionsResult> {
+        let source = World::source(self, file_id(&path)).ok()?;
+        let (from, completions) =
+            typst_ide::autocomplete(self, self.document.as_ref(), &source, cursor, explicit)?;
+        let completions = completions
+            .into_iter()
+            .map(|completion| CompletionItem {
+                kind: match completion.kind {
+                    CompletionKind::Syntax => "syntax",
+                    CompletionKind::Func => "func",
+                    CompletionKind::Type => "type",
+                    CompletionKind::Param => "param",
+                    CompletionKind::Constant => "constant",
+                    CompletionKind::Path => "path",
+                    CompletionKind::Package => "package",
+                    CompletionKind::Label => "label",
+                    CompletionKind::Font => "font",
+                    CompletionKind::Symbol(_) => "symbol",
+                }
+                .to_string(),
+                label: completion.label.to_string(),
+                apply: completion.apply.map(|apply| apply.to_string()),
+                detail: completion.detail.map(|detail| detail.to_string()),
+            })
+            .collect();
+        Some(CompletionsResult { from, completions })
+    }
+
+    /// Hover tooltip for the source at `path`, at byte offset `cursor`.
+    /// Tooltips improve after a compile (values, for instance, need one).
+    pub fn tooltip(&self, path: String, cursor: usize) -> Option<TooltipInfo> {
+        let source = World::source(self, file_id(&path)).ok()?;
+        let tooltip =
+            typst_ide::tooltip(self, self.document.as_ref(), &source, cursor, Side::Before)?;
+        Some(match tooltip {
+            Tooltip::Text(text) => TooltipInfo { kind: TooltipKind::Text, text: text.to_string() },
+            Tooltip::Code(text) => TooltipInfo { kind: TooltipKind::Code, text: text.to_string() },
+        })
+    }
+
+    /// Map a cursor position in the source at `path` to positions in the
+    /// rendered preview (the reverse of [`go_to_definition`](Self::go_to_definition)).
+    /// Empty when the file is unknown, nothing was compiled yet, or the cursor
+    /// is not on text.
+    #[wasm_bindgen(js_name = jumpFromCursor)]
+    pub fn jump_from_cursor(&self, path: String, cursor: usize) -> Vec<PreviewPosition> {
+        let Some(document) = self.document.as_ref() else {
+            return Vec::new();
+        };
+        let Ok(source) = World::source(self, file_id(&path)) else {
+            return Vec::new();
+        };
+        typst_ide::jump_from_cursor(document, &source, cursor)
+            .into_iter()
+            .map(|position| PreviewPosition {
+                page: position.page.get() - 1,
+                x: position.point.x.to_mm(),
+                y: position.point.y.to_mm(),
+            })
+            .collect()
+    }
+
+    fn now_utc(&self) -> Option<time::OffsetDateTime> {
+        let seconds = self.now_millis?.div_euclid(1000.0) as i64;
+        time::OffsetDateTime::from_unix_timestamp(seconds).ok()
+    }
+
+    fn pdf_timestamp(&self) -> Option<Timestamp> {
+        let now = self.now_utc()?;
+        let datetime = Datetime::from_ymd_hms(
+            now.year(),
+            u8::from(now.month()),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second(),
+        )?;
+        Some(Timestamp::new_utc(datetime))
+    }
+
     fn set_inputs(&mut self, inputs: JsValue) {
         // `inputs` is a plain JS object (Record<string, string>); the typed
         // `Inputs` contract lives in the JS wrapper. Deserialize it into a dict.
@@ -430,8 +600,12 @@ impl World for WasmWorld {
         self.fonts[index].get()
     }
 
-    fn today(&self, _offset: Option<Duration>) -> Option<Datetime> {
-        Datetime::from_ymd(1970, 1, 1)
+    fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
+        let mut now = self.now_utc()?;
+        if let Some(offset) = offset {
+            now += time::Duration::from(offset);
+        }
+        Datetime::from_ymd(now.year(), u8::from(now.month()), now.day())
     }
 }
 
@@ -439,9 +613,4 @@ impl IdeWorld for WasmWorld {
     fn upcast(&self) -> &dyn World {
         self
     }
-}
-
-fn now() -> Option<Timestamp> {
-    let datetime = Datetime::from_ymd_hms(2000, 1, 1, 0, 0, 0).unwrap();
-    Some(Timestamp::new_utc(datetime))
 }

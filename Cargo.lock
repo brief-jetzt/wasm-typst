@@ -2939,6 +2939,7 @@ dependencies = [
  "comemo",
  "console_error_panic_hook",
  "serde-wasm-bindgen",
+ "time",
  "typst",
  "typst-assets",
  "typst-ide",
