@@ -22,8 +22,12 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(js_name = World)]
 pub struct WasmWorld {
     library: LazyHash<Library>,
+    // `sys.inputs` the current `library` was built with; lets compile() skip
+    // the (expensive) Library rebuild when the inputs didn't change.
+    inputs: HashMap<String, String>,
     book: LazyHash<FontBook>,
     fonts: Vec<FontSlot>,
+    main: FileId,
     slots: Mutex<HashMap<FileId, FileSlot>>,
     // used to store the compiled document, so that we are able to
     // return compiler warnings in the .compile() method
@@ -219,8 +223,10 @@ impl WasmWorld {
     pub fn new() -> Self {
         Self {
             library: LazyHash::new(Library::builder().build()),
+            inputs: HashMap::new(),
             book: LazyHash::new(FontBook::new()),
             fonts: Vec::new(),
+            main: file_id("main.typ"),
             slots: Mutex::new(HashMap::new()),
             document: None,
             now_millis: None,
@@ -555,11 +561,17 @@ impl WasmWorld {
         // `inputs` is a plain JS object (Record<string, string>); the typed
         // `Inputs` contract lives in the JS wrapper. Deserialize it into a dict.
         let inputs: HashMap<String, String> = serde_wasm_bindgen::from_value(inputs).unwrap_or(HashMap::new());
+        // Rebuilding the Library constructs the entire stdlib scope and
+        // invalidates its LazyHash — only do it when the inputs changed.
+        if inputs == self.inputs {
+            return;
+        }
         let mut dict = Dict::new();
-        for (key, value) in inputs {
-            dict.insert(Str::from(key), Value::Str(Str::from(value)));
+        for (key, value) in &inputs {
+            dict.insert(Str::from(key.as_str()), Value::Str(Str::from(value.as_str())));
         }
         self.library = LazyHash::new(Library::builder().with_inputs(dict).build());
+        self.inputs = inputs;
     }
 }
 
@@ -573,7 +585,7 @@ impl World for WasmWorld {
     }
 
     fn main(&self) -> FileId {
-        file_id("main.typ")
+        self.main
     }
 
     fn source(&self, id: FileId) -> FileResult<Source> {
