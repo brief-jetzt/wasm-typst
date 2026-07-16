@@ -8,7 +8,7 @@
 
 // The `../pkg/...` specifier is rewritten to `./wasm_typst.js` at build time
 // (tsdown onSuccess), once this file has been emitted into pkg/ next to it.
-import { World, FontInput, SourceInput, FileInput } from "../pkg/wasm_typst.js";
+import { World, FontInput, SourceInput, FileInput, DiagnosticSeverity } from "../pkg/wasm_typst.js";
 
 export interface FontSource {
   path: string;
@@ -26,14 +26,33 @@ export interface TypstRendererOptions {
 /** typst `sys.inputs` — passed through to the document. */
 export type Inputs = Record<string, string>;
 
+/** A compiler diagnostic with its source location resolved. */
+export interface Diagnostic {
+  severity: "error" | "warning";
+  message: string;
+  /**
+   * Source path as passed in `sources`/`updateSource`, e.g. "main.typ";
+   * undefined when the diagnostic is not tied to a file.
+   */
+  path?: string;
+  /** Byte range into that source. */
+  start?: number;
+  end?: number;
+  /** 1-based line/column of `start`. */
+  line?: number;
+  column?: number;
+  /** Suggestions on how to fix the problem. */
+  hints: string[];
+}
+
 export interface RenderResult<T> {
   output: T;
   /**
-   * Compiler diagnostics as a string (empty when the compile was clean). The
-   * wasm layer conflates errors and warnings here; on a hard error `output` is
-   * empty and this explains why.
+   * Compiler diagnostics, errors first (empty when the compile was clean).
+   * On a hard error `output` reflects the previously compiled document (or is
+   * empty) and the errors here explain why.
    */
-  diagnostics: string;
+  diagnostics: Diagnostic[];
 }
 
 /** Where a click in the rendered document points to in the sources. */
@@ -96,7 +115,25 @@ class Renderer implements TypstRenderer {
     type: "pdf" | "svg" | "svg-pages";
     input?: Inputs;
   }): RenderResult<Uint8Array | string | string[]> {
-    const diagnostics = this.#world.compile(req.input ?? {});
+    // Copy each wasm diagnostic into a plain object and free the handle so
+    // consumers never have to manage wasm memory themselves.
+    const diagnostics = this.#world.compile(req.input ?? {}).map(d => {
+      try {
+        return {
+          // Crosses the wasm boundary as a number; string is nicer to consume.
+          severity: d.severity === DiagnosticSeverity.Error ? ("error" as const) : ("warning" as const),
+          message: d.message,
+          path: d.path,
+          start: d.start,
+          end: d.end,
+          line: d.line,
+          column: d.column,
+          hints: d.hints,
+        };
+      } finally {
+        d.free();
+      }
+    });
     const output =
       req.type === "pdf"
         ? this.#world.render_pdf()

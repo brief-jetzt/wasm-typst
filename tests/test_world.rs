@@ -1,5 +1,5 @@
 use wasm_bindgen::JsValue;
-use wasm_typst::{FileInput, FontInput, SourceInput, WasmWorld};
+use wasm_typst::{Diagnostic, DiagnosticSeverity, FileInput, FontInput, SourceInput, WasmWorld};
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -32,7 +32,7 @@ fn update_source_is_reflected() {
     // Incrementally edit the main source, then recompile.
     world.update_source(String::from("main.typ"), String::from("= Second heading"));
     let errors = world.compile(JsValue::NULL);
-    assert_eq!(errors, "", "compile should be clean, got: {errors}");
+    assert!(errors.is_empty(), "compile should be clean, got: {errors:?}");
     assert!(world.render_svg().starts_with("<svg"));
 }
 
@@ -92,7 +92,7 @@ fn go_to_definition() {
         vec![],
     );
     let errors = world.compile(JsValue::NULL);
-    assert_eq!(errors, "", "compile should be clean, got: {errors}");
+    assert!(errors.is_empty(), "compile should be clean, got: {errors:?}");
 
     // Click inside the heading text. A4 default margins are 2.5cm, so the
     // first line starts just below/right of (25mm, 25mm).
@@ -111,6 +111,40 @@ fn go_to_definition() {
 }
 
 #[wasm_bindgen_test]
+fn compile_returns_structured_diagnostics() {
+    let mut world = WasmWorld::new();
+    // Line 2, unknown variable -> one error diagnostic.
+    world.set_sources_and_files(
+        vec![SourceInput::new(
+            String::from("main.typ"),
+            String::from("Hello\n#foobar()"),
+        )],
+        vec![],
+    );
+    let diags: Vec<Diagnostic> = world.compile(JsValue::NULL);
+    assert_eq!(diags.len(), 1, "expected one error, got: {diags:?}");
+    let d = &diags[0];
+    assert_eq!(d.severity, DiagnosticSeverity::Error);
+    assert!(d.message.contains("unknown variable"), "message was: {}", d.message);
+    assert_eq!(d.path.as_deref(), Some("main.typ"));
+    assert_eq!(d.line, Some(2));
+    assert_eq!(d.column, Some(2), "column points at `foobar` after the `#`");
+    let (start, end) = (d.start.unwrap(), d.end.unwrap());
+    assert_eq!(&"Hello\n#foobar()"[start..end], "foobar");
+}
+
+#[wasm_bindgen_test]
+fn clean_compile_returns_no_diagnostics() {
+    let mut world = WasmWorld::new();
+    world.set_sources_and_files(
+        vec![SourceInput::new(String::from("main.typ"), String::from("Hello"))],
+        vec![],
+    );
+    let diags = world.compile(JsValue::NULL);
+    assert!(diags.is_empty(), "expected clean compile, got: {diags:?}");
+}
+
+#[wasm_bindgen_test]
 fn reading_a_binary_file_works() {
     // Regression test: World::file() used to panic (todo!()). A `read` of a
     // file registered via update_file must now succeed.
@@ -123,5 +157,5 @@ fn reading_a_binary_file_works() {
         vec![FileInput::new(String::from("data.txt"), b"hello".to_vec())],
     );
     let errors = world.compile(JsValue::NULL);
-    assert_eq!(errors, "", "reading data.txt should be clean, got: {errors}");
+    assert!(errors.is_empty(), "reading data.txt should be clean, got: {errors:?}");
 }

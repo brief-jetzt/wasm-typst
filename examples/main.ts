@@ -27,7 +27,9 @@ const renderer = createTypstRenderer({
 
 function rerender() {
   const { output, diagnostics } = renderer.render({ type: "svg-pages" });
-  statusEl.textContent = diagnostics || `ok — ${renderer.getPageCount()} page(s)`;
+  statusEl.textContent =
+    diagnostics.map(d => `${d.severity}: ${d.path ?? "?"}:${d.line ?? "?"}: ${d.message}`).join("\n")
+    || `ok — ${renderer.getPageCount()} page(s)`;
   pagesEl.replaceChildren(
     ...output.map((svg, i) => {
       const div = document.createElement("div");

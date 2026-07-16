@@ -5,8 +5,8 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use typst::{Library, LibraryExt, World};
-use typst::diag::{FileError, FileResult};
+use typst::{Library, LibraryExt, World, WorldExt};
+use typst::diag::{FileError, FileResult, Severity, SourceDiagnostic};
 use typst::foundations::{Bytes, Datetime, Dict, Duration, Smart, Str, Value};
 use typst::introspection::PagedPosition;
 use typst::layout::{Abs, Point};
@@ -61,6 +61,38 @@ pub struct DefinitionPosition {
     pub path: String,
     /// Byte offset into that source.
     pub cursor: usize,
+}
+
+/// Severity of a [`Diagnostic`]. Passed as a plain number over the wasm
+/// boundary (strings would be copied/decoded on every access).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Error = 0,
+    Warning = 1,
+}
+
+/// A compiler diagnostic with its source location resolved.
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct Diagnostic {
+    pub severity: DiagnosticSeverity,
+    #[wasm_bindgen(getter_with_clone)]
+    pub message: String,
+    /// Source path without leading slash, e.g. `main.typ` — matches the path
+    /// keys passed to `SourceInput`/`updateSource`. `None` when the diagnostic
+    /// is not tied to a file.
+    #[wasm_bindgen(getter_with_clone)]
+    pub path: Option<String>,
+    /// Byte range into that source.
+    pub start: Option<usize>,
+    pub end: Option<usize>,
+    /// 1-based line/column of `start`.
+    pub line: Option<usize>,
+    pub column: Option<usize>,
+    /// Suggestions on how to fix the problem.
+    #[wasm_bindgen(getter_with_clone)]
+    pub hints: Vec<String>,
 }
 
 /// Page dimensions in millimeters.
@@ -222,24 +254,50 @@ impl WasmWorld {
         }
     }
 
-    pub fn compile(&mut self, inputs: JsValue) -> String {
+    /// Compile the sources. Returns the diagnostics, errors first (empty on a
+    /// clean compile). On a hard error the previously compiled document is kept.
+    pub fn compile(&mut self, inputs: JsValue) -> Vec<Diagnostic> {
         self.set_inputs(inputs);
         let warned = typst::compile::<PagedDocument>(self);
-        let res = match warned.output {
-            Ok(document) => {
-                self.document = Some(document);
-                let mut res = String::new();
-                for warning in warned.warnings {
-                    res.push_str(&format!("{:?}\n", warning));
-                }
-                res
-            }
-            Err(e) => format!("{:?}\n", e),
-        };
+        let mut diagnostics = Vec::new();
+        match warned.output {
+            Ok(document) => self.document = Some(document),
+            Err(errors) => diagnostics.extend(errors.iter().map(|d| self.to_diagnostic(d))),
+        }
+        diagnostics.extend(warned.warnings.iter().map(|d| self.to_diagnostic(d)));
         // Bound the memoization cache. A long-lived World is reused across many
         // renders; without eviction comemo's cache would grow unbounded.
         comemo::evict(10);
-        res
+        diagnostics
+    }
+
+    fn to_diagnostic(&self, diag: &SourceDiagnostic) -> Diagnostic {
+        let range = self.range(diag.span);
+        let (line, column) = range
+            .as_ref()
+            .zip(diag.span.id())
+            .and_then(|(range, id)| {
+                let source = self.source(id).ok()?;
+                let (line, column) = source.lines().byte_to_line_column(range.start)?;
+                Some((line + 1, column + 1))
+            })
+            .unzip();
+        Diagnostic {
+            severity: match diag.severity {
+                Severity::Error => DiagnosticSeverity::Error,
+                Severity::Warning => DiagnosticSeverity::Warning,
+            },
+            message: diag.message.to_string(),
+            path: diag
+                .span
+                .id()
+                .map(|id| id.vpath().get_without_slash().to_string()),
+            start: range.as_ref().map(|r| r.start),
+            end: range.as_ref().map(|r| r.end),
+            line,
+            column,
+            hints: diag.hints.iter().map(|hint| hint.v.to_string()).collect(),
+        }
     }
 
     pub fn render_pdf(&self) -> Vec<u8> {

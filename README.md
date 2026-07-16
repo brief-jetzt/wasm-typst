@@ -26,7 +26,8 @@ const { output, diagnostics } = renderer.render({
   input: { name: "world" }, // typst sys.inputs
 });
 // output: Uint8Array (pdf) or string (svg)
-// diagnostics: compiler errors/warnings as a string ("" when clean)
+// diagnostics: Diagnostic[] ([] when clean), errors first:
+//   { severity: "error" | "warning", message, path?, start?, end?, line?, column?, hints }
 
 renderer.updateSource("main.typ", "Changed");
 renderer.update({ sources: { "main.typ": "..." } }); // shallow-merge
