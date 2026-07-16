@@ -36,3 +36,5 @@ typst-assets = { version = "0.15.0", features = ["fonts"] }
 
 [profile.release]
 opt-level = "s"
+lto = true
+codegen-units = 1
