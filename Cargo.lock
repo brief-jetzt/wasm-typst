@@ -2503,9 +2503,9 @@ dependencies = [
 
 [[package]]
 name = "typst-render"
-version = "0.15.0"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "040ab6e56e91099963ef69dd9f0d284adda66c066b742f1866a20b8295ebb2e3"
+checksum = "de8a657a5fa5b9b7d3d458f482978674de910b54889d46f3bb55ca89f570f83e"
 dependencies = [
  "bytemuck",
  "comemo",
