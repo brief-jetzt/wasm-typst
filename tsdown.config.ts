@@ -11,7 +11,7 @@ export default defineConfig({
   dts: true,
   clean: false, // don't wipe the wasm-pack output in pkg/
   // The wasm glue is shipped by wasm-pack; keep it external.
-  external: [/wasm_typst\.js$/],
+  deps: { neverBundle: [/wasm_typst\.js$/] },
   onSuccess() {
     // 1. The glue is authored against ../pkg/wasm_typst.js (dev path); once
     //    emitted into pkg/ it sits next to wasm_typst.js, so fix the specifier.
