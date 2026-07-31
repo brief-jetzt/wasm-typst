@@ -19,5 +19,6 @@
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
     "wasm-pack": "^0.15.0"
-  }
+  },
+  "version": "0.0.1"
 }
