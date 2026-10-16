@@ -281,3 +281,83 @@ fn reading_a_binary_file_works() {
     let errors = world.compile(JsValue::NULL, None);
     assert!(errors.is_empty(), "reading data.txt should be clean, got: {errors:?}");
 }
+
+/// A world with fonts, compiled from `main.typ` with the given source.
+fn compiled(source: &str) -> WasmWorld {
+    let mut world = WasmWorld::new();
+    world.set_fonts(load_fonts());
+    world.set_sources_and_files(
+        vec![SourceInput::new(String::from("main.typ"), String::from(source))],
+        vec![],
+    );
+    let errors = world.compile(JsValue::NULL, None);
+    assert!(errors.is_empty(), "compile should be clean, got: {errors:?}");
+    world
+}
+
+fn caret_x(world: &WasmWorld, cursor: usize) -> f64 {
+    world
+        .caret_position(String::from("main.typ"), cursor)
+        .unwrap_or_else(|| panic!("caret for {cursor}"))
+        .x
+}
+
+#[wasm_bindgen_test]
+fn caret_position_is_precise_to_the_character() {
+    let world = compiled("Hello world");
+    let caret = world.caret_position(String::from("main.typ"), 0).expect("caret");
+    assert_eq!(caret.page, 0);
+    assert!(caret.height > 3.0 && caret.height < 6.0, "11pt text, height was {}", caret.height);
+    // Every character moves the caret, also within a text node.
+    let xs: Vec<f64> = (0..=11).map(|cursor| caret_x(&world, cursor)).collect();
+    assert!(xs.windows(2).all(|w| w[0] < w[1]), "caret x not increasing: {xs:?}");
+    assert!(world.caret_position(String::from("nope.typ"), 0).is_none(), "unknown file");
+}
+
+#[wasm_bindgen_test]
+fn caret_in_invisible_markup_sticks_to_the_text_before() {
+    // Cursor 2 is on the `*`, which renders nothing.
+    let world = compiled("a *b*");
+    assert!((caret_x(&world, 2) - caret_x(&world, 3)).abs() < 0.01);
+}
+
+#[wasm_bindgen_test]
+fn caret_handles_multi_byte_characters() {
+    // "ü" is two bytes; the byte after it starts the next character.
+    let world = compiled("Grüße");
+    assert!(caret_x(&world, 2) < caret_x(&world, 4));
+    assert!(caret_x(&world, 4) < caret_x(&world, 6));
+}
+
+#[wasm_bindgen_test]
+fn selection_rects_cover_the_range() {
+    let world = compiled("Hello world");
+    let rects = world.selection_rects(String::from("main.typ"), 0, 5);
+    assert_eq!(rects.len(), 1, "one line");
+    let rect = &rects[0];
+    assert!((rect.x - caret_x(&world, 0)).abs() < 0.01);
+    assert!((rect.x + rect.width - caret_x(&world, 5)).abs() < 0.01);
+    assert!(world.selection_rects(String::from("main.typ"), 3, 3).is_empty(), "empty range");
+}
+
+#[wasm_bindgen_test]
+fn selection_rects_split_per_line() {
+    let source = "#set page(width: 60mm)\nLorem ipsum dolor sit amet, consectetur adipiscing elit.";
+    let world = compiled(source);
+    let rects = world.selection_rects(String::from("main.typ"), 23, source.len());
+    assert!(rects.len() > 1, "wrapped text spans several lines, got {}", rects.len());
+    assert!(rects.windows(2).all(|w| w[0].y < w[1].y), "one rect per line, top to bottom");
+}
+
+#[wasm_bindgen_test]
+fn cursor_at_resolves_points_beside_the_text() {
+    let world = compiled("Hello world");
+    let caret = world.caret_position(String::from("main.typ"), 0).expect("caret");
+    let y = caret.y + caret.height / 2.0;
+    let path = || String::from("main.typ");
+    assert_eq!(world.cursor_at(path(), 0, 1.0, y), Some(0), "left margin");
+    assert_eq!(world.cursor_at(path(), 0, 200.0, y), Some(11), "right of the line end");
+    assert_eq!(world.cursor_at(path(), 0, caret_x(&world, 1) + 0.1, y), Some(1), "inside a word");
+    assert_eq!(world.cursor_at(path(), 0, 1.0, 280.0), Some(0), "far below, nearest line");
+    assert_eq!(world.cursor_at(path(), 3, 1.0, y), None, "no such page");
+}

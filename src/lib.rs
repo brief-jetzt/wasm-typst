@@ -1,3 +1,4 @@
+mod caret;
 mod utils;
 
 use std::collections::HashMap;
@@ -166,6 +167,41 @@ pub struct PreviewPosition {
     pub page: usize,
     pub x: f64,
     pub y: f64,
+}
+
+/// Where to draw a text caret: a vertical line from (x, y) down by `height`,
+/// in millimeters from the top-left of the given 0-based page.
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct CaretPosition {
+    pub page: usize,
+    pub x: f64,
+    pub y: f64,
+    pub height: f64,
+}
+
+/// A rectangle in the rendered preview: millimeters from the top-left of the
+/// given 0-based page.
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct PreviewRect {
+    pub page: usize,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl From<caret::PageRect> for PreviewRect {
+    fn from(rect: caret::PageRect) -> Self {
+        PreviewRect {
+            page: rect.page,
+            x: rect.left.to_mm(),
+            y: rect.top.to_mm(),
+            width: (rect.right - rect.left).to_mm(),
+            height: (rect.bottom - rect.top).to_mm(),
+        }
+    }
 }
 
 struct FileSlot {
@@ -537,6 +573,57 @@ impl WasmWorld {
                 y: position.point.y.to_mm(),
             })
             .collect()
+    }
+
+    /// Where to draw the caret for byte offset `cursor` in the source at
+    /// `path`. Unlike [`jump_from_cursor`](Self::jump_from_cursor), this is
+    /// precise to the character. In markup that leaves nothing visible (`*`,
+    /// `#v(..)`, a paragraph break) the caret sticks to the closest visible
+    /// text before it. `None` when nothing was compiled yet or the file has no
+    /// visible text.
+    #[wasm_bindgen(js_name = caretPosition)]
+    pub fn caret_position(&self, path: String, cursor: usize) -> Option<CaretPosition> {
+        let rect = caret::caret(&self.placed_glyphs(&path), cursor)?;
+        Some(CaretPosition {
+            page: rect.page,
+            x: rect.left.to_mm(),
+            y: rect.top.to_mm(),
+            height: (rect.bottom - rect.top).to_mm(),
+        })
+    }
+
+    /// Highlight rectangles for the byte range `start..end` in the source at
+    /// `path`, usually one per line. Empty for an empty range or invisible
+    /// markup.
+    #[wasm_bindgen(js_name = selectionRects)]
+    pub fn selection_rects(&self, path: String, start: usize, end: usize) -> Vec<PreviewRect> {
+        caret::selection(&self.placed_glyphs(&path), start..end)
+            .into_iter()
+            .map(PreviewRect::from)
+            .collect()
+    }
+
+    /// The byte offset in the source at `path` closest to (x, y) millimeters
+    /// from the top-left of the given 0-based page: on the nearest line, at the
+    /// nearer side of the nearest character. Unlike
+    /// [`go_to_definition`](Self::go_to_definition), this also resolves points
+    /// beside the text, like the margins, line ends or gaps between lines, and
+    /// ignores text from other files. `None` when the page has no text from
+    /// that file.
+    #[wasm_bindgen(js_name = cursorAt)]
+    pub fn cursor_at(&self, path: String, page: usize, x: f64, y: f64) -> Option<usize> {
+        caret::cursor_at(
+            &self.placed_glyphs(&path),
+            page,
+            Point::new(Abs::mm(x), Abs::mm(y)),
+        )
+    }
+
+    fn placed_glyphs(&self, path: &str) -> Vec<caret::PlacedGlyph> {
+        match self.document.as_ref() {
+            Some(document) => caret::placed_glyphs(self, document, file_id(path)),
+            None => Vec::new(),
+        }
     }
 
     fn now_utc(&self) -> Option<time::OffsetDateTime> {

@@ -137,6 +137,20 @@ export interface PreviewPosition {
 }
 
 /**
+ * Where to draw a text caret: a vertical line from (x, y) down by `height`,
+ * in millimeters from the top-left of the given 0-based page.
+ */
+export interface CaretPosition extends PreviewPosition {
+  height: number;
+}
+
+/** A rectangle in the rendered preview, in millimeters like `PreviewPosition`. */
+export interface PreviewRect extends PreviewPosition {
+  width: number;
+  height: number;
+}
+
+/**
  * Common render request fields. `now` feeds `datetime.today()` and the PDF
  * creation timestamp; defaults to `Date.now()`. Pass a fixed value for
  * reproducible output.
@@ -185,6 +199,29 @@ export interface TypstRenderer extends Disposable {
    * when the cursor is not on text.
    */
   jumpFromCursor(path: string, cursor: number): PreviewPosition[];
+  /**
+   * Where to draw the caret for byte offset `cursor` in the source at `path`.
+   * Unlike jumpFromCursor, this is precise to the character. In markup that
+   * leaves nothing visible (`*`, `#v(..)`, a paragraph break) the caret sticks
+   * to the closest visible text before it. Requires a prior render();
+   * undefined when the file has no visible text.
+   */
+  caretPosition(path: string, cursor: number): CaretPosition | undefined;
+  /**
+   * Highlight rectangles for the byte range `start..end` in the source at
+   * `path`, usually one per line. Requires a prior render(); empty for an
+   * empty range or invisible markup.
+   */
+  selectionRects(path: string, start: number, end: number): PreviewRect[];
+  /**
+   * The byte offset in the source at `path` closest to (xMm, yMm) on the
+   * given 0-based page: on the nearest line, at the nearer side of the nearest
+   * character. Unlike goToDefinition, this also resolves points beside the
+   * text (margins, line ends, gaps between lines) and ignores text from other
+   * files. Requires a prior render(); undefined when the page has no text from
+   * that file.
+   */
+  cursorAt(path: string, page: number, xMm: number, yMm: number): number | undefined;
   /** Number of pages in the compiled document (0 before the first render()). */
   getPageCount(): number;
   /** Page dimensions in mm; undefined if page is out of bounds or nothing rendered yet. */
@@ -315,6 +352,30 @@ class Renderer implements TypstRenderer {
         pos.free();
       }
     });
+  }
+
+  caretPosition(path: string, cursor: number): CaretPosition | undefined {
+    const caret = this.#world.caretPosition(path, cursor);
+    if (caret === undefined) return undefined;
+    try {
+      return { page: caret.page, x: caret.x, y: caret.y, height: caret.height };
+    } finally {
+      caret.free();
+    }
+  }
+
+  selectionRects(path: string, start: number, end: number): PreviewRect[] {
+    return this.#world.selectionRects(path, start, end).map(rect => {
+      try {
+        return { page: rect.page, x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      } finally {
+        rect.free();
+      }
+    });
+  }
+
+  cursorAt(path: string, page: number, xMm: number, yMm: number): number | undefined {
+    return this.#world.cursorAt(path, page, xMm, yMm);
   }
 
   goToDefinition(page: number, xMm: number, yMm: number): DefinitionPosition | undefined {
