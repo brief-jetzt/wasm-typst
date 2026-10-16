@@ -43,6 +43,11 @@ renderer.tooltip("main.typ", 13); // { kind: "text" | "code", text }?
 renderer.goToDefinition(0, 35, 27); // click (page, xMm, yMm) -> { path, cursor }?
 renderer.jumpFromCursor("main.typ", 3); // cursor -> [{ page, x, y }] in mm
 
+// Editing on the rendered page, precise to the character (byte offsets, mm):
+renderer.caretPosition("main.typ", 3); // cursor -> { page, x, y, height }?
+renderer.selectionRects("main.typ", 0, 5); // range -> [{ page, x, y, width, height }]
+renderer.cursorAt("main.typ", 0, 30, 27); // nearest cursor to (page, xMm, yMm), also beside the text
+
 renderer.dispose(); // frees the wasm instance (or `using renderer = ...`)
 ```
 
